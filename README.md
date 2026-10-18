@@ -1,0 +1,94 @@
+# Beach Volley Duel 沙灘排球對決
+
+純前端的 2D 排球對戰網頁遊戲：對戰電腦、同機雙人、P2P 線上對戰（房間碼）、練習模式。支援鍵盤、手機觸控、手把，可安裝為 PWA 離線遊玩。
+
+## 操作
+
+| 動作 | 1P | 2P |
+| --- | --- | --- |
+| 左／右 | D ／ G | ← ／ → |
+| 跳 | R | ↑ |
+| 下 | F（或 V） | ↓ |
+| 擊球 | Z | Enter |
+
+- 空中按擊球＝扣殺：無方向平射、上＝高吊、下＝重扣、前／後＝斜射
+- 地上按擊球＋左右＝魚躍
+- Esc 選單、空白鍵暫停；對戰電腦與線上時兩套按鍵都能控制自己
+- 手把：D-pad／左搖桿移動、A 跳、B 或 X 擊球
+
+## 本機開發
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # 決定性、物理、rollback 單元測試
+npm run build      # 輸出到 dist/
+```
+
+需要 Node 20 以上。規格書建議 pnpm，本 repo 使用 npm（換成 pnpm 也可直接執行）。
+
+## 部署（GitHub Pages）
+
+1. 推到 GitHub 的 `main` 分支。
+2. Repo → Settings → Pages → Source 選 **GitHub Actions**。
+3. `.github/workflows/deploy.yml` 會跑測試、建置並發佈；網址為 `https://<帳號>.github.io/<repo>/`。
+
+`vite.config.ts` 的 `base: './'` 使用相對路徑，放在任何子路徑都能運作。
+
+## 線上對戰
+
+- 信令使用 PeerJS 公用伺服器（`0.peerjs.com`），STUN／TURN 使用 PeerJS 預設設定，所以只靠靜態主機就能連線，不需自架後端。
+- 房主建立房間得到 6 碼房間碼與連結 `?room=XXXXXX`；對方開連結或輸入房間碼加入。
+- 雙方各自跑同一個決定性引擎，只交換每幀 1 byte 的輸入（輸入延遲 1～3 幀＋rollback），每 30 幀對帳一次 hash。
+
+## 新增角色包
+
+1. 在 `public/characters/<id>/` 放入：
+   - `manifest.json`（格式見下方或現有角色）
+   - `sprite.png`：每格 64×64、**面向右**繪製；列＝動畫，欄＝影格
+   - `portrait.png`（選用）
+2. 把 `<id>` 加進 `public/characters/index.json`。
+
+```json
+{
+  "id": "myhero",
+  "name": { "zh-TW": "我的角色", "en": "My Hero" },
+  "sprite": "sprite.png",
+  "frameSize": [64, 64],
+  "animations": {
+    "idle":  { "row": 0, "frames": 5, "fps": 8 },
+    "run":   { "row": 0, "frames": 5, "fps": 12 },
+    "jump":  { "row": 1, "frames": 5, "fps": 10 },
+    "spike": { "row": 2, "frames": 5, "fps": 15 },
+    "dive":  { "row": 3, "frames": 3, "fps": 10 },
+    "win":   { "row": 4, "frames": 5, "fps": 6 },
+    "lose":  { "row": 5, "frames": 5, "fps": 6 }
+  },
+  "stats": { "speed": 0, "jump": 0, "power": 0 },
+  "portrait": "portrait.png",
+  "themeColor": "#F5C542"
+}
+```
+
+- `stats` 每項 −2～+2（各 ±5%），平衡模式開啟時忽略。
+- 碰撞箱固定 64×64，外觀不影響物理。
+- manifest 用 zod 驗證；缺少的動畫退回 `idle`，圖片載入失敗時以純色佔位圖顯示，不會當機。
+- 使用他人的角色圖前，請自行確認授權。
+
+內建角色由 `npm run gen:assets` 重新產生。
+
+## 專案結構
+
+```
+src/
+  engine/      決定性純邏輯：物理、規則、AI、PRNG（整數運算、不碰 DOM）
+  render/      Canvas 繪圖、內插、特效
+  input/       鍵盤、觸控、手把 → InputFrame
+  net/         PeerJS 傳輸、rollback、線上協定
+  characters/  角色包載入與驗證
+  audio/       Web Audio 合成音效與背景音樂
+  ui/          設定、DOM 工具
+  i18n/        繁體中文、英文
+scripts/       原創像素素材產生器
+tests/         Vitest 單元測試
+```

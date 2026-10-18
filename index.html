@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b6fb3" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="Beach Volley Duel — 2D 排球對戰網頁遊戲，支援電腦、同機雙人與線上對戰。" />
+    <link rel="icon" type="image/png" href="./icons/icon-64.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <title>Beach Volley Duel</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="stage"><canvas id="game"></canvas></div>
+      <div id="hud"></div>
+      <div id="overlay"></div>
+      <div id="rotate-hint"><div class="phone-icon"></div><p data-i18n="rotate"></p></div>
+      <div id="toast"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

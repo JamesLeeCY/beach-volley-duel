@@ -1,0 +1,23 @@
+{
+  "name": "beach-volley-duel",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "gen:assets": "node scripts/gen-assets.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "peerjs": "^1.5.5",
+    "zod": "^4.6.7"
+  }
+}
