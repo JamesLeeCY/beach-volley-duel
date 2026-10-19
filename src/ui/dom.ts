@@ -38,6 +38,32 @@ export function segmented<T extends string | number | boolean>(
   return wrap;
 }
 
+/** 卡片選擇器：每個選項是一張帶縮圖的卡片 */
+export function cardPicker<T extends string>(
+  options: { value: T; label: string; thumb: (el: HTMLElement) => void }[],
+  current: T,
+  onChange: (v: T) => void,
+  cls = '',
+): HTMLDivElement {
+  const wrap = h('div', { class: `cards ${cls}` });
+  for (const o of options) {
+    const pic = h('span', { class: 'card-pic' });
+    o.thumb(pic);
+    const b = h('button', {
+      type: 'button',
+      class: 'card',
+      onclick: () => {
+        for (const c of wrap.children) c.classList.remove('on');
+        b.classList.add('on');
+        onChange(o.value);
+      },
+    }, pic, h('span', { class: 'card-label' }, o.label));
+    if (o.value === current) b.classList.add('on');
+    wrap.append(b);
+  }
+  return wrap;
+}
+
 /** 方向鍵／手把在選單按鈕間移動焦點 */
 export function moveFocus(root: HTMLElement, dir: 'up' | 'down' | 'left' | 'right') {
   const items = [...root.querySelectorAll<HTMLButtonElement>('button:not([disabled])')].filter((b) => b.offsetParent !== null);

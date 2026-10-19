@@ -65,7 +65,10 @@ npm run build      # 輸出到 dist/
     "spike": { "row": 2, "frames": 5, "fps": 15 },
     "dive":  { "row": 3, "frames": 3, "fps": 10 },
     "win":   { "row": 4, "frames": 5, "fps": 6 },
-    "lose":  { "row": 5, "frames": 5, "fps": 6 }
+    "lose":  { "row": 5, "frames": 5, "fps": 6 },
+    "bump":  { "row": 7, "frames": 5, "fps": 20 },
+    "cheer": { "row": 8, "frames": 5, "fps": 10 },
+    "oops":  { "row": 9, "frames": 5, "fps": 8 }
   },
   "stats": { "speed": 0, "jump": 0, "power": 0 },
   "portrait": "portrait.png",
@@ -75,6 +78,7 @@ npm run build      # 輸出到 dist/
 
 - `stats` 每項 −2～+2（各 ±5%），平衡模式開啟時忽略。
 - 碰撞箱固定 64×64，外觀不影響物理。
+- `bump`（接球）、`cheer`（得分）、`oops`（失分）為選用的反應動畫，沒有就不播
 - manifest 用 zod 驗證；缺少的動畫退回 `idle`，圖片載入失敗時以純色佔位圖顯示，不會當機。
 - 使用他人的角色圖前，請自行確認授權。
 

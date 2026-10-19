@@ -6,11 +6,6 @@
 // - ntu 台大椰林大道、songshan 松菸大巨蛋、expo 圓山花博、yangming 陽明山溫泉、tamsui 淡水夕陽：見 landmarks.ts。
 // 靜態部分預先畫進離屏畫布（依裝置解析度），每幀只畫會動的雲、波光、星星、流星與光點。
 
-import { drawTaipei, drawZoo, paintTaipei, paintZoo } from './cityzoo';
-import {
-  drawExpo, drawNtu, drawSongshan, drawTamsui, drawYangming,
-  paintExpo, paintNtu, paintSongshan, paintTamsui, paintYangming,
-} from './landmarks';
 
 export type SceneId = 'beach' | 'lake' | 'comet' | 'taipei' | 'zoo' | 'ntu' | 'songshan' | 'expo' | 'yangming' | 'tamsui';
 export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui'];
@@ -18,16 +13,36 @@ export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo', 'nt
 type Painter = (g: CanvasRenderingContext2D, L: number, T: number, R: number, B: number) => void;
 type Animator = (ctx: CanvasRenderingContext2D, time: number, L: number, R: number) => void;
 
-/** 景點場景：靜態畫法＋每幀動畫 */
-const LANDMARKS: Partial<Record<SceneId, { paint: Painter; draw: Animator }>> = {
-  taipei: { paint: paintTaipei, draw: drawTaipei },
-  zoo: { paint: paintZoo, draw: drawZoo },
-  ntu: { paint: paintNtu, draw: drawNtu },
-  songshan: { paint: paintSongshan, draw: drawSongshan },
-  expo: { paint: paintExpo, draw: drawExpo },
-  yangming: { paint: paintYangming, draw: drawYangming },
-  tamsui: { paint: paintTamsui, draw: drawTamsui },
-};
+/** 景點場景（台北系列）：第一次用到時才下載，減少首次載入的大小 */
+const LANDMARK_IDS = new Set<SceneId>(['taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui']);
+let LANDMARKS: Partial<Record<SceneId, { paint: Painter; draw: Animator }>> | null = null;
+let landmarksLoading: Promise<void> | null = null;
+
+export function loadLandmarks(): Promise<void> {
+  landmarksLoading ??= Promise.all([import('./cityzoo'), import('./landmarks')]).then(([c, l]) => {
+    LANDMARKS = {
+      taipei: { paint: c.paintTaipei, draw: c.drawTaipei },
+      zoo: { paint: c.paintZoo, draw: c.drawZoo },
+      ntu: { paint: l.paintNtu, draw: l.drawNtu },
+      songshan: { paint: l.paintSongshan, draw: l.drawSongshan },
+      expo: { paint: l.paintExpo, draw: l.drawExpo },
+      yangming: { paint: l.paintYangming, draw: l.drawYangming },
+      tamsui: { paint: l.paintTamsui, draw: l.drawTamsui },
+    };
+  });
+  return landmarksLoading;
+}
+
+/** 景點場景還在下載時的暫代畫面：簡單的天空與地面 */
+function paintPlaceholder(g: CanvasRenderingContext2D, L: number, T: number, R: number, B: number) {
+  const sky = g.createLinearGradient(0, T, 0, B);
+  sky.addColorStop(0, '#3f6fb0');
+  sky.addColorStop(0.5, '#a9c8e6');
+  sky.addColorStop(0.65, '#d8c4a0');
+  sky.addColorStop(1, '#b89a74');
+  g.fillStyle = sky;
+  g.fillRect(L, T, R - L, B - T);
+}
 
 /** 白天場景用光點＋鏡頭光斑；其他場景用色調（multiply）＋光點顏色（null = 不放光點） */
 const DAY_SCENES = new Set<SceneId>(['beach', 'zoo', 'ntu', 'expo']);
@@ -274,7 +289,18 @@ export class Scenery {
     g.clearRect(L, T, R - L, B - T);
     if (this.theme === 'lake') this.paintLake(g, L, T, R, B);
     else if (this.theme === 'comet') this.paintComet(g, L, T, R, B);
-    else if (LANDMARKS[this.theme]) LANDMARKS[this.theme]!.paint(g, L, T, R, B);
+    else if (LANDMARK_IDS.has(this.theme)) {
+      const lm = LANDMARKS?.[this.theme];
+      if (lm) lm.paint(g, L, T, R, B);
+      else {
+        paintPlaceholder(g, L, T, R, B);
+        // 下載完成後清掉快取，下一幀重畫
+        const theme = this.theme;
+        void loadLandmarks().then(() => {
+          if (this.theme === theme) this.key = '';
+        });
+      }
+    }
     else this.paintBeach(g, L, T, R, B);
     this.layer = c;
     this.buildClouds(k);
@@ -614,7 +640,7 @@ export class Scenery {
     }
 
     if (this.theme === 'beach') this.drawSea(ctx, time, L, R);
-    else if (LANDMARKS[this.theme]) LANDMARKS[this.theme]!.draw(ctx, time, L, R);
+    else if (LANDMARK_IDS.has(this.theme)) LANDMARKS?.[this.theme]?.draw(ctx, time, L, R);
     else this.drawLake(ctx, time, L, R);
     ctx.imageSmoothingEnabled = smooth;
   }

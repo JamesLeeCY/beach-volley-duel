@@ -19,7 +19,7 @@ export const ManifestSchema = z.object({
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;
-export type AnimName = 'idle' | 'run' | 'jump' | 'spike' | 'dive' | 'win' | 'lose';
+export type AnimName = 'idle' | 'run' | 'jump' | 'spike' | 'dive' | 'win' | 'lose' | 'bump' | 'cheer' | 'oops';
 
 export interface CharacterPack {
   id: string;

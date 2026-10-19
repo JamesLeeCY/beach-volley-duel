@@ -214,6 +214,9 @@ function eye(P, x, y, kind, size = 1) {
     P.ellipse(x + 0.5, y + 3.2, 0.9, 1.3, '#8fd0ff', 220);
   } else if (kind === 'closed') {
     P.line(x - 2.2, y, x + 2.2, y, INK, 1);
+  } else if (kind === 'surprised') {
+    P.ellipse(x, y, 1.5 * size, 1.9 * size, '#2b1a14');
+    P.curve(x - 2.6, y - 4.6, x, y - 5.6, x + 2.4, y - 4.2, INK, 0.8);
   } else if (kind === 'sleepy') {
     P.ellipse(x, y + 0.6, 2.2 * size, 1.6 * size, '#2b1a14');
     P.line(x - 2.6 * size, y - 0.6, x + 2.6 * size, y - 0.6, INK, 1);
@@ -473,11 +476,52 @@ const ROWS = [
   [0, -4, -7, -4, 0].map((b, i) => ({ ...base, bob: b, eyes: 'happy', arm: [12, -22 - (i % 2) * 3], arm2: [-12, -20 - (i % 2) * 3], tail: [0, 3, 5, 3, 0][i] })),
   // 5 lose
   [0, 1, 1, 1, 0].map((b, i) => ({ ...base, bob: 2 + b, sx: 1.05, sy: 0.9, eyes: 'sad', arm: [12, 10], arm2: [-12, 10], tail: [4, 5, 6, 5, 4][i] })),
+  // 6 run：身體前傾、腳步與手臂擺幅加大
+  [0, -2, 0, -2, 0].map((b, i) => ({
+    ...base, bob: b, dx: 1.5, sx: 1.03, sy: 0.97,
+    legs: [5, 0, -5, 0, 5][i], arm: [16, [0, 4, 8, 4, 0][i]], arm2: [-12, [8, 4, 0, 4, 8][i]], tail: [-2, 1, 3, 1, -2][i],
+  })),
+  // 7 bump（接球）：屈膝、雙手併攏往前下方 → 擊球後往上送
+  [
+    { ...base, eyes: 'focus', bob: 3, sy: 0.93, sx: 1.05, arm: [16, 10], arm2: [12, 12] },
+    { ...base, eyes: 'focus', bob: 3, sy: 0.92, sx: 1.06, arm: [18, 8], arm2: [15, 10] },
+    { ...base, eyes: 'focus', bob: 1, arm: [18, 0], arm2: [15, 2] },
+    { ...base, eyes: 'open', bob: -1, arm: [16, -8], arm2: [13, -6] },
+    { ...base, eyes: 'open', bob: 0, arm: [14, -2], arm2: [-12, 4] },
+  ],
+  // 8 cheer（得分）：跳起來、雙手高舉、閃閃發亮
+  [-2, -6, -8, -6, -2].map((b, i) => ({
+    ...base, bob: b, eyes: 'happy', sparkle: i, arm: [11, -24 - (i % 2) * 3], arm2: [-11, -22 - ((i + 1) % 2) * 3], tail: [1, 3, 5, 3, 1][i],
+  })),
+  // 9 oops（失分）：嚇一跳、往後縮、冒汗
+  [0, 1, 0, 1, 0].map((b, i) => ({
+    ...base, bob: b, dx: [-1, -2, -1, -2, -1][i], eyes: 'surprised', sweat: i, arm: [16, 0], arm2: [-16, 0], tail: [2, 3, 2, 3, 2][i],
+  })),
 ];
+
+/** 得分時頭上的小星星 */
+function sparkles(P, phase) {
+  for (const [x, y, s] of [[14, 10, 1], [50, 6, 0.8], [56, 22, 0.6]]) {
+    const r = (2.2 + ((phase + x) % 3) * 0.5) * s;
+    P.poly([[x, y - r * 2], [x + r * 0.5, y - r * 0.5], [x + r * 2, y], [x + r * 0.5, y + r * 0.5], [x, y + r * 2], [x - r * 0.5, y + r * 0.5], [x - r * 2, y], [x - r * 0.5, y - r * 0.5]], '#ffe27a');
+    P.dot(x, y, '#ffffff');
+  }
+}
+
+/** 失分時的冷汗 */
+function sweat(P, phase) {
+  const y = 16 + phase * 0.8;
+  P.poly([[50, y - 4], [47.5, y + 1], [52.5, y + 1]], '#9fdcff');
+  P.ellipse(50, y + 1.5, 2.6, 2.6, '#9fdcff');
+  P.dot(49, y + 0.5, '#ffffff');
+}
 
 function drawFrame(ch, pose) {
   let img = newImg(F, F);
-  ch.draw(pen(img), pose);
+  const P = pen(img);
+  ch.draw(P, pose);
+  if (pose.sparkle !== undefined) sparkles(P, pose.sparkle);
+  if (pose.sweat !== undefined) sweat(P, pose.sweat);
   if (pose.rot) img = rotate(img, pose.rot, 32, 40, 0, 2);
   outline(img, ch.outline);
   return img;
@@ -502,12 +546,15 @@ for (const [id, ch] of Object.entries(CHARS)) {
     frameSize: [F, F],
     animations: {
       idle: { row: 0, frames: 5, fps: 8 },
-      run: { row: 0, frames: 5, fps: 12 },
+      run: { row: 6, frames: 5, fps: 14 },
       jump: { row: 1, frames: 5, fps: 10 },
       spike: { row: 2, frames: 5, fps: 15 },
       dive: { row: 3, frames: 3, fps: 10 },
       win: { row: 4, frames: 5, fps: 6 },
       lose: { row: 5, frames: 5, fps: 6 },
+      bump: { row: 7, frames: 5, fps: 20 },
+      cheer: { row: 8, frames: 5, fps: 10 },
+      oops: { row: 9, frames: 5, fps: 8 },
     },
     hitbox: { w: 64, h: 64 },
     stats: ch.stats,

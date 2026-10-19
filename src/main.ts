@@ -4,9 +4,11 @@ import { FPS_BY_SPEED } from './engine/constants';
 import { createState, defaultConfig, step } from './engine/physics';
 import { AiController, type Difficulty } from './engine/ai';
 import { IN_LEFT, IN_RIGHT, Phase, type GameEvent, type GameState, type InputFrame, type MatchConfig } from './engine/types';
-import { BALL_SKINS, Renderer, type BallSkin } from './render/renderer';
+import { BALL_SKINS, Renderer, paintBall, type BallSkin } from './render/renderer';
+import { sceneThumb } from './render/thumbs';
 import { SCENES, type SceneId } from './render/scenery';
 import { audio } from './audio/audio';
+import type { MusicId } from './audio/music';
 import {
   applyKeymaps, canBind, cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, Keyboard, KEY_ACTIONS, KEYMAP_1P, KEYMAP_2P,
   keyLabel, keymapSide, menuAction, rebind, type KeyAction, type KeyMap,
@@ -19,11 +21,23 @@ import {
 import { deleteLocalPack, importPackZip, loadLocalPacks } from './characters/localPacks';
 import { getLang, setLang, t, type Lang, type MsgKey } from './i18n';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
-import { button, h, moveFocus, segmented } from './ui/dom';
-import { OnlineMatch, type StartInfo } from './net/online';
-import { normalizeCode } from './net/transport';
+import { button, cardPicker, h, moveFocus, segmented } from './ui/dom';
+// 線上模組（含 PeerJS）在進入線上對戰時才載入
+import type { OnlineMatch, StartInfo } from './net/online';
+import { normalizeCode } from './net/code';
 
 type Mode = 'demo' | 'cpu' | 'local' | 'practice' | 'online';
+
+/** 每個場景的背景音樂曲風 */
+const SCENE_MUSIC: Record<SceneId, MusicId> = {
+  beach: 'bright', zoo: 'bright', expo: 'bright', ntu: 'bright',
+  lake: 'dusk', tamsui: 'dusk', songshan: 'dusk',
+  comet: 'night', taipei: 'night',
+  yangming: 'mountain',
+};
+
+/** 選角操作：左右切換、確認，或直接點選第幾個角色 */
+type CharAction = 'left' | 'right' | 'ok' | number;
 
 interface CharSlot {
   idx: number;
@@ -266,6 +280,7 @@ class App {
     const s = this.settings;
     this.scene = s.scene === 'random' ? pick(SCENES) : s.scene;
     this.ball = s.ball === 'random' ? pick(Object.keys(BALL_SKINS) as BallSkin[]) : s.ball;
+    audio.setMusic(SCENE_MUSIC[this.scene] ?? 'bright');
   }
 
   private startDemo() {
@@ -517,7 +532,7 @@ class App {
         if (s.ready && s.ctrl === 'human') s.ready = false;
         else s.ready = true;
       } else if (!s.ready || s.ctrl === 'cpu') {
-        s.idx = (s.idx + (action === 'left' ? list.length - 1 : 1)) % list.length;
+        s.idx = typeof action === 'number' ? action : (s.idx + (action === 'left' ? list.length - 1 : 1)) % list.length;
         if (s.ctrl === 'cpu') s.ready = true;
       }
       audio.blip(action !== 'left');
@@ -545,10 +560,13 @@ class App {
     list: CharacterPack[],
     slots: [CharSlot, CharSlot],
     visible: [boolean, boolean],
-    act: (side: 0 | 1, action: 'left' | 'right' | 'ok') => void,
+    act: (side: 0 | 1, action: CharAction) => void,
   ) {
     const wrap = h('div', { class: 'char-select' });
-    const parts: { root: HTMLElement; canvas: HTMLCanvasElement; name: HTMLElement; stats: HTMLElement; status: HTMLElement; who: HTMLElement; okBtn: HTMLButtonElement }[] = [];
+    const parts: {
+      root: HTMLElement; canvas: HTMLCanvasElement; name: HTMLElement; stats: HTMLElement; status: HTMLElement;
+      who: HTMLElement; okBtn: HTMLButtonElement; thumbs: HTMLButtonElement[];
+    }[] = [];
     for (const side of [0, 1] as const) {
       const canvas = h('canvas', { width: 128, height: 128 });
       const name = h('div', { class: 'name' });
@@ -566,9 +584,18 @@ class App {
         ),
         name, stats, status, okBtn,
       );
+      // 所有角色的小頭像：直接點選，不用一個個切換
+      const thumbs = list.map((pack, i) => {
+        const b = h('button', { type: 'button', class: 'thumb', title: displayName(pack, getLang()), onclick: () => canAct() && act(side, i) });
+        if (pack.portrait) b.append(h('img', { src: pack.portrait, alt: '', draggable: 'false' }));
+        else b.style.background = pack.manifest.themeColor;
+        b.style.setProperty('--theme', pack.manifest.themeColor);
+        return b;
+      });
+      root.insertBefore(h('div', { class: 'thumbs' }, ...thumbs), name);
       if (!visible[side]) root.style.display = 'none';
       wrap.append(root);
-      parts.push({ root, canvas, name, stats, status, who, okBtn });
+      parts.push({ root, canvas, name, stats, status, who, okBtn, thumbs });
     }
     let raf = 0;
     const draw = (time: number) => {
@@ -630,6 +657,10 @@ class App {
         p.status.textContent = s.ready ? t('ready') : t('notReady');
         p.status.classList.toggle('ready', s.ready);
         p.okBtn.style.display = s.ctrl === 'human' ? '' : 'none';
+        p.thumbs.forEach((b, i) => {
+          b.classList.toggle('sel', i === s.idx);
+          b.disabled = s.ctrl === 'remote' || (s.ready && s.ctrl === 'human');
+        });
         p.okBtn.textContent = s.ready ? '✕' : t('ready');
       });
     };
@@ -638,40 +669,78 @@ class App {
   }
 
   // ---------------------------------------------------------------- 場景／排球選擇
+  private static readonly SCENE_LABELS: Record<SceneId, MsgKey> = {
+    beach: 'sceneBeach', lake: 'sceneLake', comet: 'sceneComet', taipei: 'sceneTaipei', zoo: 'sceneZoo',
+    ntu: 'sceneNtu', songshan: 'sceneSongshan', expo: 'sceneExpo', yangming: 'sceneYangming', tamsui: 'sceneTamsui',
+  };
+
+  private static readonly BALL_LABELS: Record<BallSkin, MsgKey> = {
+    classic: 'ballClassic', red: 'ballRed', blue: 'ballBlue', ultra: 'ballUltra',
+  };
+
+  /** 場景卡片：每張卡片是該場景的縮圖 */
   private sceneSeg() {
     const s = this.settings;
-    return segmented<Settings['scene']>([
-      { value: 'beach', label: t('sceneBeach') }, { value: 'lake', label: t('sceneLake') },
-      { value: 'comet', label: t('sceneComet') }, { value: 'taipei', label: t('sceneTaipei') },
-      { value: 'zoo', label: t('sceneZoo') }, { value: 'ntu', label: t('sceneNtu') },
-      { value: 'songshan', label: t('sceneSongshan') }, { value: 'expo', label: t('sceneExpo') },
-      { value: 'yangming', label: t('sceneYangming') }, { value: 'tamsui', label: t('sceneTamsui') },
-      { value: 'random', label: t('random') },
-    ], s.scene, (v) => {
-      s.scene = v;
-      saveSettings(s);
-      this.rollLook();
-    });
+    const options: Settings['scene'][] = [...SCENES, 'random'];
+    return cardPicker(
+      options.map((id) => ({
+        value: id,
+        label: t(id === 'random' ? 'random' : App.SCENE_LABELS[id]),
+        thumb: (el: HTMLElement) => {
+          if (id === 'random') {
+            el.textContent = '🎲';
+            return;
+          }
+          void sceneThumb(id).then((url) => {
+            el.style.backgroundImage = `url(${url})`;
+          });
+        },
+      })),
+      s.scene,
+      (v) => {
+        s.scene = v;
+        saveSettings(s);
+        this.rollLook();
+      },
+      'scene-cards',
+    );
   }
 
+  /** 排球卡片：畫出每種配色的球 */
   private ballSeg() {
     const s = this.settings;
-    return segmented<Settings['ball']>([
-      { value: 'classic', label: t('ballClassic') }, { value: 'red', label: t('ballRed') },
-      { value: 'blue', label: t('ballBlue') }, { value: 'ultra', label: t('ballUltra') },
-      { value: 'random', label: t('random') },
-    ], s.ball, (v) => {
-      s.ball = v;
-      saveSettings(s);
-      this.rollLook();
-    });
+    const options: Settings['ball'][] = [...(Object.keys(BALL_SKINS) as BallSkin[]), 'random'];
+    return cardPicker(
+      options.map((id) => ({
+        value: id,
+        label: t(id === 'random' ? 'random' : App.BALL_LABELS[id]),
+        thumb: (el: HTMLElement) => {
+          if (id === 'random') {
+            el.textContent = '🎲';
+            return;
+          }
+          const c = h('canvas', { width: 80, height: 80 });
+          const g = c.getContext('2d')!;
+          g.scale(2, 2);
+          paintBall(g, 20, 20, 17, 0.5, id);
+          el.append(c);
+        },
+      })),
+      s.ball,
+      (v) => {
+        s.ball = v;
+        saveSettings(s);
+        this.rollLook();
+      },
+      'ball-cards',
+    );
   }
 
   /** 選角畫面下方的場景、排球選擇（選了背景會立刻換） */
   private lookPickers() {
     return h('div', { class: 'look-pickers' },
-      h('div', { class: 'opt-row' }, h('label', {}, t('scene')), this.sceneSeg()),
-      h('div', { class: 'opt-row' }, h('label', {}, t('ballSkin')), this.ballSeg()),
+      h('div', { class: 'opt-block' }, h('label', {}, t('scene')), this.sceneSeg()),
+      h('div', { class: 'opt-block' }, h('label', {}, t('ballSkin')), this.ballSeg()),
     );
   }
 
@@ -695,8 +764,8 @@ class App {
       ], s.speed, (v) => { s.speed = v as Settings['speed']; save(); })),
       row(t('targetScore'), segmented([{ value: 5, label: '5' }, { value: 10, label: '10' }, { value: 15, label: '15' }],
         s.targetScore, (v) => { s.targetScore = v as Settings['targetScore']; save(); })),
-      row(t('scene'), this.sceneSeg()),
-      row(t('ballSkin'), this.ballSeg()),
+      h('div', { class: 'opt-block' }, h('label', {}, t('scene')), this.sceneSeg()),
+      h('div', { class: 'opt-block' }, h('label', {}, t('ballSkin')), this.ballSeg()),
       row(t('graphics'), segmented([{ value: 'sharp', label: t('sharp') }, { value: 'smooth', label: t('smooth') }],
         s.graphics, (v) => { s.graphics = v as Settings['graphics']; save(); })),
       row(t('bgm'), onOff('bgm')),
@@ -958,9 +1027,22 @@ class App {
     this.show('online', el, () => this.showModes());
   }
 
-  private newOnline(): OnlineMatch {
+  private onlineToken = 0;
+
+  /** 載入線上模組並建立連線物件；載入期間使用者若已離開畫面則回傳 null */
+  private async newOnline(): Promise<OnlineMatch | null> {
     this.online?.close();
-    const o = new OnlineMatch(
+    this.online = null;
+    const token = ++this.onlineToken;
+    let mod: typeof import('./net/online');
+    try {
+      mod = await import('./net/online');
+    } catch {
+      this.onlineError('offline');
+      return null;
+    }
+    if (token !== this.onlineToken) return null;
+    const o = new mod.OnlineMatch(
       {
         onCode: (code) => this.onRoomCode(code),
         onConnected: () => this.showOnlineCharSelect(),
@@ -993,15 +1075,15 @@ class App {
     return o;
   }
 
-  private showOnlineHost() {
-    const o = this.newOnline();
+  private async showOnlineHost() {
     const el = h('div', { class: 'screen' },
       h('h2', {}, t('createRoom')),
       h('p', {}, t('connecting')),
       h('div', { class: 'menu row' }, button(t('back'), () => this.leaveOnline(), 'secondary')),
     );
     this.show('room', el, () => this.leaveOnline());
-    o.host();
+    const o = await this.newOnline();
+    o?.host();
   }
 
   private onRoomCode(code: string) {
@@ -1026,8 +1108,7 @@ class App {
     this.show('room', el, () => this.leaveOnline());
   }
 
-  showOnlineJoin(code: string) {
-    const o = this.newOnline();
+  async showOnlineJoin(code: string) {
     const el = h('div', { class: 'screen' },
       h('h2', {}, t('joinRoom')),
       h('div', { class: 'code' }, code),
@@ -1035,7 +1116,8 @@ class App {
       h('div', { class: 'menu row' }, button(t('back'), () => this.leaveOnline(), 'secondary')),
     );
     this.show('room', el, () => this.leaveOnline());
-    o.join(code);
+    const o = await this.newOnline();
+    o?.join(code);
   }
 
   private onlineError(msg: string) {
@@ -1092,6 +1174,7 @@ class App {
   }
 
   private leaveOnline() {
+    this.onlineToken++;
     this.online?.close();
     this.online = null;
     history.replaceState(null, '', location.pathname);
@@ -1117,7 +1200,7 @@ class App {
       if (side !== me) return;
       const s = slots[side];
       if (action === 'ok') s.ready = !s.ready;
-      else if (!s.ready) s.idx = (s.idx + (action === 'left' ? list.length - 1 : 1)) % list.length;
+      else if (!s.ready) s.idx = typeof action === 'number' ? action : (s.idx + (action === 'left' ? list.length - 1 : 1)) % list.length;
       audio.blip(action !== 'left');
       o.setChar(list[s.idx].id, s.ready);
       panels.refresh();

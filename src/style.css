@@ -739,3 +739,173 @@ input.code-input {
   max-width: 560px;
   margin: 10px auto 0;
 }
+
+/* 選角小頭像 */
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.thumbs .thumb {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.thumbs .thumb img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.thumbs .thumb.sel {
+  border-color: var(--theme, var(--accent));
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0 2px var(--theme, var(--accent));
+}
+
+.thumbs .thumb[disabled] {
+  opacity: 0.55;
+}
+
+.thumbs .thumb.sel[disabled] {
+  opacity: 1;
+}
+
+@media (max-height: 420px) {
+  .thumbs .thumb {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+/* 場景／排球的預覽卡片 */
+.opt-block {
+  padding: 8px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
+  text-align: left;
+}
+
+.opt-block > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+}
+
+.cards.ball-cards {
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+
+.cards .card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.cards .card.on {
+  border-color: var(--accent);
+  background: rgba(255, 197, 49, 0.18);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.cards .card-pic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 432 / 304;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25) center / cover no-repeat;
+  font-size: 22px;
+}
+
+.ball-cards .card-pic {
+  aspect-ratio: 1;
+  background-color: transparent;
+}
+
+.ball-cards .card-pic canvas {
+  width: 40px;
+  height: 40px;
+}
+
+.cards .card-label {
+  text-align: center;
+  line-height: 1.2;
+}
+
+.look-pickers {
+  max-width: 720px;
+}
+
+@media (max-height: 420px) {
+  .cards {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 4px;
+  }
+  .cards .card {
+    font-size: 10px;
+    padding: 3px;
+  }
+  .cards.ball-cards {
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  }
+  .ball-cards .card-pic canvas {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+/* 手機橫向：選角面板精簡，「已準備」不需要捲動就看得到 */
+@media (max-height: 420px) {
+  .screen h2 {
+    margin-bottom: 4px;
+    font-size: 18px;
+  }
+  .char-select {
+    gap: 8px;
+  }
+  .char-panel {
+    padding: 4px 6px;
+  }
+  .char-panel .pick canvas {
+    width: 60px;
+    height: 60px;
+  }
+  .char-panel .name {
+    font-size: 15px;
+  }
+  .char-panel .stat {
+    display: none;
+  }
+  .char-panel .status {
+    display: inline-block;
+    margin: 2px 8px 0 0;
+  }
+  .thumbs {
+    margin: 2px 0;
+  }
+}

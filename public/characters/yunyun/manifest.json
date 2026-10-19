@@ -16,9 +16,9 @@
       "fps": 8
     },
     "run": {
-      "row": 0,
+      "row": 6,
       "frames": 5,
-      "fps": 12
+      "fps": 14
     },
     "jump": {
       "row": 1,
@@ -44,6 +44,21 @@
       "row": 5,
       "frames": 5,
       "fps": 6
+    },
+    "bump": {
+      "row": 7,
+      "frames": 5,
+      "fps": 20
+    },
+    "cheer": {
+      "row": 8,
+      "frames": 5,
+      "fps": 10
+    },
+    "oops": {
+      "row": 9,
+      "frames": 5,
+      "fps": 8
     }
   },
   "hitbox": {

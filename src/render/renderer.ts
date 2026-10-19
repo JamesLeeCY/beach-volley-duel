@@ -18,6 +18,64 @@ export const BALL_SKINS: Record<BallSkin, { base: string; a: string; b: string; 
   ultra: { base: '#ffffff', a: '#2a2a2e', b: '#f6c625', seam: '#111114', outline: '#111114' },
 };
 
+/** 畫一顆排球（遊戲中與選單預覽共用） */
+export function paintBall(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, angle: number, skin: BallSkin, squash = false) {
+  const pal = BALL_SKINS[skin] ?? BALL_SKINS.classic;
+  ctx.save();
+  ctx.translate(x, y + (squash ? 4 : 0));
+  if (squash) ctx.scale(1.2, 0.8);
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fillStyle = pal.base;
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.rotate(angle);
+  // 排球的三組弧形色塊
+  const panel = (rot: number, color: string) => {
+    ctx.save();
+    ctx.rotate(rot);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, -R * 1.25, R * 1.15, 0.22 * Math.PI, 0.78 * Math.PI);
+    ctx.arc(0, -R * 1.85, R * 1.3, 0.72 * Math.PI, 0.28 * Math.PI, true);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+  panel(0, pal.a);
+  panel((Math.PI * 2) / 3, pal.b);
+  panel((Math.PI * 4) / 3, pal.a);
+  // 縫線
+  ctx.strokeStyle = pal.seam;
+  ctx.lineWidth = 0.9;
+  for (let i = 0; i < 3; i++) {
+    ctx.save();
+    ctx.rotate((i * Math.PI * 2) / 3);
+    ctx.beginPath();
+    ctx.arc(0, -R * 1.25, R * 1.15, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+  // 立體感：左上受光、右下陰影
+  const shade = ctx.createRadialGradient(-R * 0.4, -R * 0.45, R * 0.1, 0, 0, R * 1.05);
+  shade.addColorStop(0, 'rgba(255,255,255,0.55)');
+  shade.addColorStop(0.35, 'rgba(255,255,255,0)');
+  shade.addColorStop(0.8, 'rgba(20,30,60,0.08)');
+  shade.addColorStop(1, 'rgba(20,30,60,0.32)');
+  ctx.fillStyle = shade;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = pal.outline;
+  ctx.beginPath();
+  ctx.arc(0, 0, R - 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export interface View {
   /** 鏡像繪圖（線上時自己永遠在左側） */
   mirror: boolean;
@@ -40,11 +98,6 @@ interface Particle {
   size: number;
 }
 
-// 3×5 像素數字
-const DIGITS = [
-  '111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001',
-  '111100111001111', '111100111101111', '111001010010010', '111101111101111', '111101111001111',
-];
 
 const hueCache = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
 
@@ -86,6 +139,8 @@ export class Renderer {
   private ballAngle = 0;
   private lastFrame = -1;
   private scenery = new Scenery();
+  /** 每位角色目前的短暫反應動作（事件觸發，純視覺） */
+  private react: ({ name: AnimName; start: number; dur: number } | null)[] = [null, null];
   private shake = 0;
   private viewW = W;
   private viewH = H;
@@ -135,7 +190,14 @@ export class Renderer {
 
   /** 從事件產生特效（只在新幀呼叫一次） */
   spawnEffects(events: GameEvent[], mirror: boolean) {
+    const now = performance.now();
     for (const e of events) {
+      // 角色的短暫反應動作：接球、得分歡呼、失分嚇一跳
+      if (e.type === 'bump' && e.who >= 0) this.react[e.who] = { name: 'bump', start: now, dur: 260 };
+      if (e.type === 'score') {
+        this.react[e.who] = { name: 'cheer', start: now, dur: 1100 };
+        this.react[1 - e.who] = { name: 'oops', start: now, dur: 1100 };
+      }
       const x = mirror ? W - e.x : e.x;
       if (e.type === 'ground') {
         this.burst(x, C.GROUND_Y, 14, '#e8c97a', 3.2, -2.5);
@@ -205,7 +267,7 @@ export class Renderer {
       const x = mx(lerp(prev.players[i].x, p.x));
       const y = lerp(prev.players[i].y, p.y);
       const facing = view.mirror ? -p.facing : p.facing;
-      this.drawPlayer(view.chars[i], p, x, y, facing, time, i === 1 && view.hueShift2);
+      this.drawPlayer(view.chars[i], p, x, y, facing, time, i === 1 && view.hueShift2, i);
     }
 
     // 球與拖尾
@@ -327,9 +389,22 @@ export class Renderer {
     }
   }
 
-  private drawPlayer(pack: CharacterPack, p: PlayerState, x: number, y: number, facing: number, time: number, hue: boolean) {
+  private drawPlayer(pack: CharacterPack, p: PlayerState, x: number, y: number, facing: number, time: number, hue: boolean, who: number) {
     const ctx = this.ctx;
-    const { name, frame } = this.animFor(p);
+    let { name, frame } = this.animFor(p);
+    // 反應動作只在一般站立／跳躍時顯示，且角色包要有這個動畫（匯入的角色包可能沒有）
+    const r = this.react[who];
+    if (r) {
+      const t = performance.now() - r.start;
+      const anims = pack.manifest.animations as Record<string, { frames: number } | undefined>;
+      if (t > r.dur) this.react[who] = null;
+      else if ((p.state === PState.Normal || p.state === PState.Jump) && anims[r.name]) {
+        name = r.name;
+        frame = Math.min(anims[r.name]!.frames - 1, Math.floor((t / r.dur) * anims[r.name]!.frames));
+        // 歡呼、嚇一跳的動畫循環播放
+        if (r.name !== 'bump') frame = null;
+      }
+    }
     const anim = animOf(pack, name);
     const [fw, fh] = pack.manifest.frameSize;
     const idx = frame !== null ? Math.min(frame, anim.frames - 1) : Math.floor((time / 1000) * anim.fps) % anim.frames;
@@ -349,81 +424,39 @@ export class Renderer {
   }
 
   private drawBall(x: number, y: number, squash: boolean, skin: BallSkin) {
-    const ctx = this.ctx;
-    const R = C.BALL_R;
-    const pal = BALL_SKINS[skin] ?? BALL_SKINS.classic;
-    ctx.save();
-    ctx.translate(x, y + (squash ? 4 : 0));
-    if (squash) ctx.scale(1.2, 0.8);
-    ctx.beginPath();
-    ctx.arc(0, 0, R, 0, Math.PI * 2);
-    ctx.fillStyle = pal.base;
-    ctx.fill();
-    ctx.save();
-    ctx.clip();
-    ctx.rotate(this.ballAngle);
-    // 排球的三組弧形色塊
-    const panel = (rot: number, color: string) => {
-      ctx.save();
-      ctx.rotate(rot);
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(0, -R * 1.25, R * 1.15, 0.22 * Math.PI, 0.78 * Math.PI);
-      ctx.arc(0, -R * 1.85, R * 1.3, 0.72 * Math.PI, 0.28 * Math.PI, true);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    };
-    panel(0, pal.a);
-    panel((Math.PI * 2) / 3, pal.b);
-    panel((Math.PI * 4) / 3, pal.a);
-    // 縫線
-    ctx.strokeStyle = pal.seam;
-    ctx.lineWidth = 0.9;
-    for (let i = 0; i < 3; i++) {
-      ctx.save();
-      ctx.rotate((i * Math.PI * 2) / 3);
-      ctx.beginPath();
-      ctx.arc(0, -R * 1.25, R * 1.15, 0.2 * Math.PI, 0.8 * Math.PI);
-      ctx.stroke();
-      ctx.restore();
-    }
-    ctx.restore();
-    // 立體感：左上受光、右下陰影
-    const shade = ctx.createRadialGradient(-R * 0.4, -R * 0.45, R * 0.1, 0, 0, R * 1.05);
-    shade.addColorStop(0, 'rgba(255,255,255,0.55)');
-    shade.addColorStop(0.35, 'rgba(255,255,255,0)');
-    shade.addColorStop(0.8, 'rgba(20,30,60,0.08)');
-    shade.addColorStop(1, 'rgba(20,30,60,0.32)');
-    ctx.fillStyle = shade;
-    ctx.beginPath();
-    ctx.arc(0, 0, R, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = pal.outline;
-    ctx.beginPath();
-    ctx.arc(0, 0, R - 0.5, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    paintBall(this.ctx, x, y, C.BALL_R, this.ballAngle, skin, squash);
   }
 
+  /** 比分：圓潤的粗體數字＋深色描邊＋角色主題色漸層，搭配手繪畫風 */
   private drawNumber(n: number, x: number, y: number, align: 'left' | 'right', color: string) {
     const ctx = this.ctx;
     const text = String(n);
-    const px = 6;
-    const cw = 3 * px + px;
-    const totalW = text.length * cw - px;
-    let ox = align === 'left' ? x : x - totalW;
-    for (const ch of text) {
-      const bits = DIGITS[Number(ch)];
-      for (let pass = 0; pass < 2; pass++) {
-        ctx.fillStyle = pass === 0 ? '#1d3557' : color;
-        const o = pass === 0 ? 2 : 0;
-        for (let i = 0; i < 15; i++) {
-          if (bits[i] === '1') ctx.fillRect(ox + (i % 3) * px + o, y + Math.floor(i / 3) * px + o, px, px);
-        }
-      }
-      ox += cw;
-    }
+    ctx.save();
+    ctx.font = '900 32px "Arial Rounded MT Bold", "Nunito", "Varela Round", "Segoe UI", "Noto Sans TC", system-ui, sans-serif';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round';
+    // 柔和陰影＋深色外框
+    ctx.shadowColor = 'rgba(10,20,40,0.35)';
+    ctx.shadowOffsetY = 2;
+    ctx.shadowBlur = 3;
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(29,53,87,0.9)';
+    ctx.strokeText(text, x, y);
+    ctx.shadowColor = 'transparent';
+    // 上亮下深的主題色
+    const grad = ctx.createLinearGradient(0, y, 0, y + 30);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.18, color);
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    ctx.fillText(text, x, y);
+    // 高光
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(text, x, y - 0.5);
+    ctx.restore();
   }
+
 }
