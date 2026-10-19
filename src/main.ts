@@ -626,7 +626,8 @@ class App {
     const s = this.settings;
     return segmented<Settings['scene']>([
       { value: 'beach', label: t('sceneBeach') }, { value: 'lake', label: t('sceneLake') },
-      { value: 'comet', label: t('sceneComet') }, { value: 'random', label: t('random') },
+      { value: 'comet', label: t('sceneComet') }, { value: 'taipei', label: t('sceneTaipei') },
+      { value: 'zoo', label: t('sceneZoo') }, { value: 'random', label: t('random') },
     ], s.scene, (v) => {
       s.scene = v;
       saveSettings(s);

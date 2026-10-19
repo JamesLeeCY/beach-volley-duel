@@ -2,20 +2,23 @@
 // - beach 夏日海灘：深藍到暖橘的天空、太陽光暈與光束、受光積雲、閃亮海面、島影、漂浮光點與鏡頭光斑。
 // - lake  黃昏湖畔：群山環抱的湖、山稜後的夕陽、粉橘色的雲、對岸亮起的燈火、湖面倒影。
 // - comet 彗星之夜：滿天星斗與銀河、拖著兩道尾巴並分裂出碎片的彗星、流星、倒映星光的山中湖泊。
+// - taipei 信義夜景、zoo 木柵動物園：見 cityzoo.ts。
 // 靜態部分預先畫進離屏畫布（依裝置解析度），每幀只畫會動的雲、波光、星星、流星與光點。
 
-export type SceneId = 'beach' | 'lake' | 'comet';
-export const SCENES: SceneId[] = ['beach', 'lake', 'comet'];
+import { drawTaipei, drawZoo, paintTaipei, paintZoo } from './cityzoo';
+
+export type SceneId = 'beach' | 'lake' | 'comet' | 'taipei' | 'zoo';
+export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo'];
 
 const SUN = { x: 330, y: 58 };
 /** 黃昏湖畔：夕陽貼近山稜 */
 const DUSK_SUN = { x: 300, y: 122 };
 /** 彗星之夜：彗星頭的位置 */
 const COMET = { x: 318, y: 46 };
-const HORIZON = 150;
-const SHORE = 196;
+export const HORIZON = 150;
+export const SHORE = 196;
 
-function rng(seed: number) {
+export function rng(seed: number) {
   let s = seed | 0;
   return () => {
     s = (s + 0x6d2b79f5) | 0;
@@ -128,7 +131,7 @@ function makeSparkles(seed: number, cx: number, count: number, near: number): Sp
 }
 
 /** 山稜線：由 baseY 往上、以多個正弦疊出起伏；basin > 0 時兩側拉高，形成盆地 */
-function ridge(
+export function ridge(
   g: CanvasRenderingContext2D, L: number, R: number, baseY: number, height: number, seed: number,
   fill: string | CanvasGradient, basin = 0,
 ) {
@@ -241,6 +244,8 @@ export class Scenery {
     g.clearRect(L, T, R - L, B - T);
     if (this.theme === 'lake') this.paintLake(g, L, T, R, B);
     else if (this.theme === 'comet') this.paintComet(g, L, T, R, B);
+    else if (this.theme === 'taipei') paintTaipei(g, L, T, R, B);
+    else if (this.theme === 'zoo') paintZoo(g, L, T, R, B);
     else this.paintBeach(g, L, T, R, B);
     this.layer = c;
     this.buildClouds(k);
@@ -546,7 +551,7 @@ export class Scenery {
         const { img, pad } = cloudCanvas(k, s.w, s.h, s.seed * 31, warm, pal);
         return { img, w: s.w + pad * 2, h: s.h + pad, x: s.x - pad, y: s.y - pad, speed: s.speed };
       });
-    if (this.theme === 'comet') {
+    if (this.theme === 'comet' || this.theme === 'taipei') {
       this.clouds = [];
     } else if (this.theme === 'lake') {
       this.clouds = make([
@@ -580,6 +585,8 @@ export class Scenery {
     }
 
     if (this.theme === 'beach') this.drawSea(ctx, time, L, R);
+    else if (this.theme === 'taipei') drawTaipei(ctx, time, L, R);
+    else if (this.theme === 'zoo') drawZoo(ctx, time, L, R);
     else this.drawLake(ctx, time, L, R);
     ctx.imageSmoothingEnabled = smooth;
   }
@@ -672,7 +679,7 @@ export class Scenery {
 
   /** 最上層（在所有東西之後畫） */
   drawOverlay(ctx: CanvasRenderingContext2D, time: number, L: number, T: number, R: number, B: number) {
-    if (this.theme === 'beach') this.drawDayOverlay(ctx, time, L, T, R, B);
+    if (this.theme === 'beach' || this.theme === 'zoo') this.drawDayOverlay(ctx, time, L, T, R, B);
     else this.drawEveningOverlay(ctx, time, L, T, R, B);
   }
 
@@ -722,8 +729,12 @@ export class Scenery {
     const night = this.theme === 'comet';
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = night ? 'rgb(178,186,236)' : 'rgb(255,226,214)';
+    ctx.fillStyle = this.theme === 'taipei' ? 'rgb(206,196,236)' : night ? 'rgb(178,186,236)' : 'rgb(255,226,214)';
     ctx.fillRect(L, T, R - L, B - T);
+    if (this.theme === 'taipei') {
+      ctx.restore();
+      return;
+    }
     ctx.globalCompositeOperation = 'lighter';
     const w = R - L;
     const band = (B - 140) * 0.9;
