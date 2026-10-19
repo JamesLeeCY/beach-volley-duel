@@ -13,6 +13,7 @@
 
 - 空中按擊球＝扣殺：無方向平射、上＝高吊、下＝重扣、前／後＝斜射
 - 地上按擊球＋左右＝魚躍
+- 鍵位可在「設定 → 鍵盤鍵位」重新綁定
 - Esc 選單、空白鍵暫停；對戰電腦與線上時兩套按鍵都能控制自己
 - 手把：D-pad／左搖桿移動、A 跳、B 或 X 擊球
 
@@ -21,7 +22,8 @@
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 決定性、物理、rollback 單元測試
+npm test           # 單元測試（決定性、物理、rollback、鍵位、角色包）
+npm run test:e2e   # Playwright E2E（首次先執行 npx playwright install chromium）
 npm run build      # 輸出到 dist/
 ```
 
@@ -85,10 +87,11 @@ src/
   render/      Canvas 繪圖、內插、特效
   input/       鍵盤、觸控、手把 → InputFrame
   net/         PeerJS 傳輸、rollback、線上協定
-  characters/  角色包載入與驗證
+  characters/  角色包載入與驗證、.zip 匯入（IndexedDB）
   audio/       Web Audio 合成音效與背景音樂
   ui/          設定、DOM 工具
   i18n/        繁體中文、英文
 scripts/       原創像素素材產生器
 tests/         Vitest 單元測試
+e2e/           Playwright E2E（本機 PeerJS 信令伺服器、模擬延遲／丟包）
 ```

@@ -1,5 +1,6 @@
 import type { Speed } from '../engine/constants';
 import { detectLang, type Lang } from '../i18n';
+import { cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, sanitizeKeymap, type KeyMap } from '../input/keyboard';
 
 export interface Settings {
   speed: Speed;
@@ -14,6 +15,8 @@ export interface Settings {
   vibrate: boolean;
   lang: Lang;
   selfLeft: boolean;
+  /** 鍵盤鍵位：[1P, 2P] */
+  keys: [KeyMap, KeyMap];
 }
 
 const KEY = 'bvd.settings.v1';
@@ -32,6 +35,7 @@ export function defaultSettings(): Settings {
     vibrate: true,
     lang: detectLang(),
     selfLeft: true,
+    keys: [cloneKeymap(DEFAULT_KEYMAP_1P), cloneKeymap(DEFAULT_KEYMAP_2P)],
   };
 }
 
@@ -39,7 +43,15 @@ export function loadSettings(): Settings {
   const d = defaultSettings();
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...d, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      const keys = Array.isArray(saved?.keys) ? saved.keys : [];
+      return {
+        ...d,
+        ...saved,
+        keys: [sanitizeKeymap(keys[0], DEFAULT_KEYMAP_1P), sanitizeKeymap(keys[1], DEFAULT_KEYMAP_2P)],
+      };
+    }
   } catch {
     // 無痕模式等情況：使用預設值
   }

@@ -3,3 +3,5 @@ dist
 *.log
 .claude/
 排球對戰網頁遊戲 規格書.md
+test-results
+playwright-report

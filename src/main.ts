@@ -6,12 +6,16 @@ import { AiController, type Difficulty } from './engine/ai';
 import { IN_LEFT, IN_RIGHT, Phase, type GameEvent, type GameState, type InputFrame, type MatchConfig } from './engine/types';
 import { Renderer } from './render/renderer';
 import { audio } from './audio/audio';
-import { Keyboard, KEYMAP_1P, KEYMAP_2P, keymapSide, menuAction } from './input/keyboard';
+import {
+  applyKeymaps, canBind, cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, Keyboard, KEY_ACTIONS, KEYMAP_1P, KEYMAP_2P,
+  keyLabel, keymapSide, menuAction, rebind, type KeyAction, type KeyMap,
+} from './input/keyboard';
 import { readGamepad } from './input/gamepad';
 import { TouchControls, isTouchDevice } from './input/touch';
 import {
   allCharacters, displayName, getCharacter, hasCharacter, loadCharacters, statsOf, DEFAULT_CHARACTER, type CharacterPack,
 } from './characters/registry';
+import { deleteLocalPack, importPackZip, loadLocalPacks } from './characters/localPacks';
 import { getLang, setLang, t, type Lang, type MsgKey } from './i18n';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
 import { button, h, moveFocus, segmented } from './ui/dom';
@@ -54,6 +58,8 @@ class App {
   screenName = '';
   online: OnlineMatch | null = null;
   onlineStarted = false;
+  /** 設定頁等待新按鍵時的處理函式（會吃掉下一個按鍵） */
+  private keyCapture: ((code: string) => void) | null = null;
   private menuKeyHandler: ((a: 'left' | 'right' | 'up' | 'down' | 'ok', side: 0 | 1 | null) => void) | null = null;
   private backHandler: (() => void) | null = null;
   private padPrev = [0, 0];
@@ -63,6 +69,10 @@ class App {
     setLang(this.settings.lang);
     this.applySettings();
     await loadCharacters();
+    await loadLocalPacks();
+    // 拖放檔案只在設定頁處理；其他地方不要讓瀏覽器開啟檔案而離開遊戲
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
     this.startDemo();
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('fullscreenchange', () => this.resize());
@@ -114,6 +124,7 @@ class App {
   applySettings() {
     const s = this.settings;
     setLang(s.lang);
+    applyKeymaps(s.keys[0], s.keys[1]);
     $('#game').classList.toggle('smooth', s.graphics === 'smooth');
     audio.configure(s.sfx, s.bgm);
     this.touch.apply(s);
@@ -274,6 +285,11 @@ class App {
 
   // ---------------------------------------------------------------- input for menus
   private onKey(code: string, e: KeyboardEvent) {
+    if (this.keyCapture) {
+      e.preventDefault();
+      this.keyCapture(code);
+      return;
+    }
     if (e.target instanceof HTMLInputElement) {
       if (code === 'Escape') this.backHandler?.();
       return;
@@ -337,6 +353,7 @@ class App {
   private show(name: string, el: HTMLElement, back: (() => void) | null = null) {
     this.screenName = name;
     this.menuKeyHandler = null;
+    this.keyCapture = null;
     this.backHandler = back;
     this.overlay.replaceChildren(el);
     const first = el.querySelector<HTMLButtonElement>('button.primary, button');
@@ -395,7 +412,11 @@ class App {
     const el = h('div', { class: 'screen' },
       h('h2', {}, t('help')),
       h('div', { class: 'help', style: 'font-size:15px;text-align:left' },
-        h('p', {}, t('helpKeys1P')), h('p', {}, t('helpKeys2P')), h('p', {}, t('helpMoves')), h('p', {}, t('helpOther')),
+        ...([KEYMAP_1P, KEYMAP_2P] as const).map((m, i) => {
+          const k = (a: KeyAction) => m[a].map(keyLabel).join('/') || '—';
+          return h('p', {}, t('helpKeys', { p: `${i + 1}P`, l: k('left'), r: k('right'), u: k('up'), d: k('down'), h: k('hit') }));
+        }),
+        h('p', {}, t('helpMoves')), h('p', {}, t('helpOther')),
       ),
       h('div', { class: 'menu' }, button(t('back'), () => this.showModes())),
     );
@@ -601,6 +622,10 @@ class App {
       row(t('touchSwap'), onOff('touchSwap')),
       row(t('vibrate'), onOff('vibrate')),
       row(t('selfLeft'), onOff('selfLeft')),
+      h('h3', {}, t('controls')),
+      this.keyBindingRows(),
+      h('h3', {}, t('packs')),
+      this.packImportBox(() => this.showSettings(back)),
       row(t('language'), segmented<Lang>([{ value: 'zh-TW', label: '繁體中文' }, { value: 'en', label: 'English' }], s.lang, (v) => {
         s.lang = v;
         save();
@@ -609,6 +634,109 @@ class App {
       h('div', { class: 'menu row' }, button(t('back'), back, 'primary')),
     );
     this.show('settings', el, back);
+  }
+
+  /** 鍵位重新綁定：點按鈕後按下新按鍵（Esc 取消） */
+  private keyBindingRows(): HTMLElement {
+    const box = h('div', { class: 'keybinds' });
+    const hint = h('p', { class: 'help', style: 'margin-top:4px' });
+    const names: Record<KeyAction, MsgKey> = { left: 'keyLeft', right: 'keyRight', up: 'keyUp', down: 'keyDown', hit: 'keyHit' };
+    const focusBind = (id: string) => box.querySelector<HTMLButtonElement>(`[data-bind="${id}"]`)?.focus({ preventScroll: true });
+    const render = (capturing: string | null) => {
+      const rows = ([0, 1] as const).map((side) => {
+        const map = this.settings.keys[side];
+        const btns = KEY_ACTIONS.map((a) => {
+          const id = `${side}-${a}`;
+          const label = id === capturing ? '…' : map[a].map(keyLabel).join('/') || '—';
+          const b = button(`${t(names[a])} ${label}`, () => startCapture(side, a), id === capturing ? 'on' : '');
+          b.dataset.bind = id;
+          return b;
+        });
+        return h('div', { class: 'opt-row' }, h('label', {}, `${side + 1}P`), h('div', { class: 'seg' }, ...btns));
+      });
+      const reset = button(t('resetKeys'), () => {
+        this.keyCapture = null;
+        commit([cloneKeymap(DEFAULT_KEYMAP_1P), cloneKeymap(DEFAULT_KEYMAP_2P)]);
+      }, 'secondary small');
+      hint.textContent = capturing ? t('pressKey') : '';
+      box.replaceChildren(...rows, hint, h('div', { class: 'menu row' }, reset));
+      if (capturing) focusBind(capturing);
+    };
+    const commit = (keys: [KeyMap, KeyMap]) => {
+      this.settings.keys = keys;
+      saveSettings(this.settings);
+      applyKeymaps(keys[0], keys[1]);
+      render(null);
+    };
+    const startCapture = (side: 0 | 1, a: KeyAction) => {
+      const id = `${side}-${a}`;
+      render(id);
+      this.keyCapture = (code) => {
+        if (code === 'Escape') {
+          this.keyCapture = null;
+          render(null);
+          focusBind(id);
+          return;
+        }
+        if (!canBind(code)) return; // 保留鍵：繼續等待
+        this.keyCapture = null;
+        audio.blip(true);
+        commit(rebind(this.settings.keys, side, a, code));
+        focusBind(id);
+      };
+    };
+    render(null);
+    return box;
+  }
+
+  /** 匯入角色包：拖入 .zip 或選擇檔案，存進 IndexedDB，只在本機可見 */
+  private packImportBox(refresh: () => void): HTMLElement {
+    const status = h('p', { class: 'help', id: 'pack-status', style: 'margin-top:4px' });
+    const file = h('input', { type: 'file', accept: '.zip,application/zip', style: 'display:none' });
+    const doImport = async (f: File | null | undefined) => {
+      if (!f) return;
+      status.classList.remove('error');
+      status.textContent = '…';
+      try {
+        const pack = await importPackZip(f);
+        this.toast(t('packImported', { name: displayName(pack, getLang()) }));
+        refresh();
+      } catch (e) {
+        status.classList.add('error');
+        status.textContent = t('packError', { msg: e instanceof Error ? e.message : String(e) });
+      }
+    };
+    file.addEventListener('change', () => void doImport(file.files?.[0]));
+    const zone = h('div', { class: 'drop-zone', id: 'pack-drop' },
+      h('span', {}, t('packDrop')),
+      button(t('packChoose'), () => file.click(), 'secondary small'),
+      file,
+    );
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('over');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('over');
+      const files = [...(e.dataTransfer?.files ?? [])];
+      void doImport(files.find((x) => x.name.toLowerCase().endsWith('.zip')) ?? files[0]);
+    });
+    const local = allCharacters().filter((c) => c.local);
+    const rows = local.map((c) => h('div', { class: 'opt-row pack-row' },
+      h('label', {}, displayName(c, getLang())),
+      button(t('packDelete'), async () => {
+        await deleteLocalPack(c.id);
+        this.chars = this.chars.map((x) => (x === c.id ? DEFAULT_CHARACTER : x)) as [string, string];
+        refresh();
+      }, 'secondary small'),
+    ));
+    return h('div', {},
+      zone, status,
+      ...(rows.length ? rows : [h('p', { class: 'help', style: 'margin-top:4px' }, t('packNone'))]),
+      h('p', { class: 'help', style: 'margin-top:4px' }, t('packLocalOnly')),
+    );
   }
 
   // ---------------------------------------------------------------- pause / result

@@ -27,6 +27,8 @@ export interface CharacterPack {
   sprite: HTMLImageElement | null;
   portrait: string | null;
   hash: string;
+  /** 由使用者匯入、只存在本機（IndexedDB） */
+  local?: boolean;
 }
 
 export const DEFAULT_CHARACTER = 'momo';
@@ -49,21 +51,25 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-/** 驗證並建立角色包；失敗時回傳 null（呼叫端會退回預設角色） */
-export async function loadPack(baseUrl: string, raw: unknown): Promise<CharacterPack | null> {
+/**
+ * 驗證並建立角色包；失敗時回傳 null（呼叫端會退回預設角色）。
+ * base 可以是網址前綴，或把 manifest 內的相對路徑轉成網址的函式（例如匯入包的 blob: URL）。
+ */
+export async function loadPack(base: string | ((path: string) => string), raw: unknown): Promise<CharacterPack | null> {
+  const url = typeof base === 'string' ? (p: string) => base + p : base;
   const parsed = ManifestSchema.safeParse(raw);
   if (!parsed.success) {
-    console.warn('[characters] manifest 無效', baseUrl, parsed.error.issues);
+    console.warn('[characters] manifest 無效', base, parsed.error.issues);
     return null;
   }
   const m = parsed.data;
-  const sprite = await loadImage(baseUrl + m.sprite);
-  if (!sprite) console.warn('[characters] 精靈圖載入失敗', baseUrl + m.sprite);
+  const sprite = await loadImage(url(m.sprite));
+  if (!sprite) console.warn('[characters] 精靈圖載入失敗', url(m.sprite));
   return {
     id: m.id,
     manifest: m,
     sprite,
-    portrait: m.portrait ? baseUrl + m.portrait : null,
+    portrait: m.portrait ? url(m.portrait) : null,
     hash: fnv(JSON.stringify(raw)),
   };
 }
@@ -99,6 +105,23 @@ export async function loadCharacters(base = './characters/'): Promise<CharacterP
     packs.set(m.id, { id: m.id, manifest: m, sprite: null, portrait: null, hash: '0' });
   }
   return [...packs.values()];
+}
+
+/** 加入（或取代同 id 的）匯入角色；不可覆蓋內建角色 */
+export function registerPack(pack: CharacterPack): boolean {
+  const cur = packs.get(pack.id);
+  if (cur && !cur.local) return false;
+  packs.set(pack.id, { ...pack, local: true });
+  return true;
+}
+
+export function unregisterPack(id: string) {
+  if (packs.get(id)?.local) packs.delete(id);
+}
+
+export function isBuiltin(id: string): boolean {
+  const p = packs.get(id);
+  return !!p && !p.local;
 }
 
 export function allCharacters(): CharacterPack[] {

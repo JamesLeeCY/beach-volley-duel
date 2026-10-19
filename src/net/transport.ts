@@ -1,6 +1,18 @@
 // WebRTC 連線：用 PeerJS 公用信令伺服器配對（免自架後端，GitHub Pages 即可運作），
 // 連通後另開一條不可靠、無序的 DataChannel 傳輸入；可靠通道傳房間事件。
-import Peer, { type DataConnection } from 'peerjs';
+import Peer, { type DataConnection, type PeerOptions } from 'peerjs';
+
+/**
+ * 測試用掛鉤（E2E 以 addInitScript 設定 window.__BVD_NET__）：改用本機信令伺服器，
+ * 並在送出端模擬單向延遲與丟包。丟包只作用在輸入（不可靠通道）；可靠通道只加延遲、保持順序。
+ */
+interface NetTestHooks {
+  peer?: PeerOptions;
+  delayMs?: number;
+  jitterMs?: number;
+  loss?: number;
+}
+const hooks: NetTestHooks = (globalThis as { __BVD_NET__?: NetTestHooks }).__BVD_NET__ ?? {};
 
 const PREFIX = 'bvd-duel-v1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 排除 0/O/1/I
@@ -45,7 +57,7 @@ export class Transport {
   host(onCode: (code: string) => void, attempt = 0) {
     this.isHost = true;
     this.code = randomCode();
-    const peer = new Peer(PREFIX + this.code, { debug: 1 });
+    const peer = new Peer(PREFIX + this.code, { debug: 1, ...hooks.peer });
     this.peer = peer;
     peer.on('open', () => onCode(this.code));
     peer.on('connection', (conn) => {
@@ -78,7 +90,7 @@ export class Transport {
   join(code: string) {
     this.isHost = false;
     this.code = code;
-    const peer = new Peer({ debug: 1 });
+    const peer = new Peer({ debug: 1, ...hooks.peer });
     this.peer = peer;
     this.timeout = window.setTimeout(() => {
       if (!this.conn?.open) this.ev.onError('timeout');
@@ -135,10 +147,28 @@ export class Transport {
   }
 
   send(m: NetMessage) {
+    if (hooks.delayMs) {
+      setTimeout(() => this.sendNow(m), hooks.delayMs);
+      return;
+    }
+    this.sendNow(m);
+  }
+
+  private sendNow(m: NetMessage) {
     if (this.conn?.open) this.conn.send(m);
   }
 
   sendInput(buf: ArrayBuffer) {
+    if (hooks.loss && Math.random() < hooks.loss) return;
+    if (hooks.delayMs || hooks.jitterMs) {
+      const copy = buf.slice(0);
+      setTimeout(() => this.sendInputNow(copy), (hooks.delayMs ?? 0) + Math.random() * (hooks.jitterMs ?? 0));
+      return;
+    }
+    this.sendInputNow(buf);
+  }
+
+  private sendInputNow(buf: ArrayBuffer) {
     if (this.fast && this.fast.readyState === 'open') {
       this.fast.send(buf);
     } else if (this.conn?.open) {

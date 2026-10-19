@@ -8,7 +8,10 @@ export interface KeyMap {
   hit: string[];
 }
 
-export const KEYMAP_1P: KeyMap = {
+export type KeyAction = keyof KeyMap;
+export const KEY_ACTIONS: KeyAction[] = ['left', 'right', 'up', 'down', 'hit'];
+
+export const DEFAULT_KEYMAP_1P: Readonly<KeyMap> = {
   left: ['KeyD'],
   right: ['KeyG'],
   up: ['KeyR'],
@@ -16,7 +19,7 @@ export const KEYMAP_1P: KeyMap = {
   hit: ['KeyZ'],
 };
 
-export const KEYMAP_2P: KeyMap = {
+export const DEFAULT_KEYMAP_2P: Readonly<KeyMap> = {
   left: ['ArrowLeft'],
   right: ['ArrowRight'],
   up: ['ArrowUp'],
@@ -24,9 +27,72 @@ export const KEYMAP_2P: KeyMap = {
   hit: ['Enter', 'NumpadEnter'],
 };
 
-const GAME_KEYS = new Set(
-  [KEYMAP_1P, KEYMAP_2P].flatMap((m) => [...m.left, ...m.right, ...m.up, ...m.down, ...m.hit]).concat(['Space']),
-);
+/** 不可綁定的按鍵（暫停／返回／全域快捷鍵） */
+const RESERVED = new Set(['Escape', 'Space', 'Tab', 'F5', 'F11', 'F12', 'MetaLeft', 'MetaRight']);
+
+export function cloneKeymap(m: Readonly<KeyMap>): KeyMap {
+  return { left: [...m.left], right: [...m.right], up: [...m.up], down: [...m.down], hit: [...m.hit] };
+}
+
+/** 目前使用中的鍵位（就地修改，讓其他模組持有的參照保持有效） */
+export const KEYMAP_1P: KeyMap = cloneKeymap(DEFAULT_KEYMAP_1P);
+export const KEYMAP_2P: KeyMap = cloneKeymap(DEFAULT_KEYMAP_2P);
+
+let gameKeys = new Set<string>();
+function refreshGameKeys() {
+  gameKeys = new Set(
+    [KEYMAP_1P, KEYMAP_2P].flatMap((m) => KEY_ACTIONS.flatMap((a) => m[a])).concat(['Space']),
+  );
+}
+refreshGameKeys();
+
+export function canBind(code: string): boolean {
+  return !!code && !RESERVED.has(code);
+}
+
+/** 檢查並修正存檔中的鍵位；格式錯誤的部分退回預設 */
+export function sanitizeKeymap(raw: unknown, fallback: Readonly<KeyMap>): KeyMap {
+  const out = cloneKeymap(fallback);
+  if (!raw || typeof raw !== 'object') return out;
+  for (const a of KEY_ACTIONS) {
+    const v = (raw as Record<string, unknown>)[a];
+    if (Array.isArray(v)) out[a] = v.filter((c): c is string => typeof c === 'string' && canBind(c)).slice(0, 4);
+  }
+  return out;
+}
+
+/**
+ * 把 code 綁到 maps[side][action]（取代該動作原本的按鍵），
+ * 並從其他所有動作移除同一個鍵，避免一鍵兩用。回傳新的鍵位（不修改輸入）。
+ */
+export function rebind(maps: [KeyMap, KeyMap], side: 0 | 1, action: KeyAction, code: string): [KeyMap, KeyMap] {
+  const next: [KeyMap, KeyMap] = [cloneKeymap(maps[0]), cloneKeymap(maps[1])];
+  if (!canBind(code)) return next;
+  for (const m of next) for (const a of KEY_ACTIONS) m[a] = m[a].filter((c) => c !== code);
+  next[side][action] = [code];
+  return next;
+}
+
+/** 套用鍵位到使用中的 KEYMAP_1P / KEYMAP_2P */
+export function applyKeymaps(p1: KeyMap, p2: KeyMap) {
+  Object.assign(KEYMAP_1P, cloneKeymap(p1));
+  Object.assign(KEYMAP_2P, cloneKeymap(p2));
+  refreshGameKeys();
+}
+
+/** 按鍵代碼的顯示名稱 */
+export function keyLabel(code: string): string {
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+  const named: Record<string, string> = {
+    ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Enter: 'Enter',
+    ShiftLeft: 'L-Shift', ShiftRight: 'R-Shift', ControlLeft: 'L-Ctrl', ControlRight: 'R-Ctrl',
+    AltLeft: 'L-Alt', AltRight: 'R-Alt', Slash: '/', Period: '.', Comma: ',', Semicolon: ';',
+    Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\',Minus: '-', Equal: '=', Backquote: '`',
+  };
+  return named[code] ?? code;
+}
 
 export class Keyboard {
   readonly down = new Set<string>();
@@ -35,7 +101,7 @@ export class Keyboard {
   constructor() {
     window.addEventListener('keydown', (e) => {
       const typing = e.target instanceof HTMLInputElement;
-      if (!typing && GAME_KEYS.has(e.code)) e.preventDefault();
+      if (!typing && gameKeys.has(e.code)) e.preventDefault();
       if (!e.repeat) for (const l of this.listeners) l(e.code, e);
       if (!typing) this.down.add(e.code);
     });
@@ -73,7 +139,7 @@ export function menuAction(code: string): 'left' | 'right' | 'up' | 'down' | 'ok
 }
 
 export function keymapSide(code: string): 0 | 1 | null {
-  const has = (m: KeyMap) => [...m.left, ...m.right, ...m.up, ...m.down, ...m.hit].includes(code);
+  const has = (m: KeyMap) => KEY_ACTIONS.some((a) => m[a].includes(code));
   if (has(KEYMAP_1P)) return 0;
   if (has(KEYMAP_2P)) return 1;
   return null;
