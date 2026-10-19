@@ -158,7 +158,23 @@ class App {
   }
 
   // ---------------------------------------------------------------- loop
+  /** 每個畫面幀：先排下一幀，再更新與繪圖；任何一幀出錯都只跳過那一幀，遊戲不會停住 */
   private frame(now: number) {
+    requestAnimationFrame((t1) => this.frame(t1));
+    try {
+      this.frameBody(now);
+    } catch (err) {
+      this.frameErrors++;
+      // 繪圖到一半出錯時，畫布可能停在 save() 之後的狀態：重設畫布
+      this.renderer.recover();
+      // 同樣的錯誤只記錄前幾次，避免洗版
+      if (this.frameErrors <= 3) console.error('[frame] 已略過出錯的一幀', err);
+    }
+  }
+
+  private frameErrors = 0;
+
+  private frameBody(now: number) {
     const dt = Math.min(250, now - this.last);
     this.last = now;
     this.pollGamepadMenu();
@@ -181,7 +197,6 @@ class App {
       ball: this.ball,
     };
     this.renderer.draw(this.prev, this.state, this.paused ? 1 : this.acc / stepMs, view, now);
-    requestAnimationFrame((t1) => this.frame(t1));
   }
 
   private humanInput(): InputFrame {
@@ -220,7 +235,8 @@ class App {
   private tickOnline() {
     const o = this.online;
     if (!o || !o.session || !this.onlineStarted || o.ended) return;
-    let input = this.humanInput();
+    // 推進不了（等待對方）時不讀取輸入，快速點擊會保留到真正推進的那一幀
+    let input = o.session.canAdvance() ? this.humanInput() : 0;
     // 鏡像顯示時左右對調，讓「往左」在畫面上就是往左
     if (o.localSide === 1 && this.settings.selfLeft) {
       const l = input & IN_LEFT;
@@ -956,6 +972,7 @@ class App {
         },
         onEmote: (id) => this.showEmote(id, false),
         onRematchAsk: () => this.toast(t('rematchAsk'), [], 3000),
+        onResume: () => this.onlineResume(),
         onDisconnect: (left) => {
           if (left === null) this.hideToast();
           else this.toast(t('disconnected', { s: left }), [], 0);
@@ -1127,6 +1144,17 @@ class App {
     o.setChar(list[slots[me].idx].id, false);
   }
 
+  /** 斷線重連後：保留比分，倒數 3 秒後繼續 */
+  private onlineResume() {
+    const o = this.online;
+    if (!o?.session) return;
+    this.hideToast();
+    this.onlineStarted = false;
+    this.state = this.prev = o.session.state;
+    this.toast(t('reconnected'), [], 2500);
+    this.runCountdown();
+  }
+
   private onlineCountdown(info: StartInfo) {
     this.mode = 'online';
     this.rollLook();
@@ -1137,17 +1165,26 @@ class App {
     this.state = this.prev = this.online!.session!.state;
     this.setInMatch(true);
     this.renderHud();
+    this.runCountdown();
+  }
+
+  private countdownTimer: number | null = null;
+
+  /** 3、2、1 倒數後開始推進線上模擬 */
+  private runCountdown() {
+    if (this.countdownTimer !== null) clearInterval(this.countdownTimer);
     let n = 3;
     const banner = h('div', { class: 'banner' }, String(n));
     this.clearScreen();
     this.overlay.replaceChildren(banner);
-    const iv = setInterval(() => {
+    this.countdownTimer = window.setInterval(() => {
       n--;
       if (n > 0) {
         banner.textContent = String(n);
         audio.blip();
       } else {
-        clearInterval(iv);
+        clearInterval(this.countdownTimer!);
+        this.countdownTimer = null;
         banner.remove();
         this.onlineStarted = true;
         this.acc = 0;

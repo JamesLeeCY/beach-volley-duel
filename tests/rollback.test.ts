@@ -71,4 +71,30 @@ describe('rollback', () => {
     expect(hashState(a.state)).toBe(hashState(b.state));
     expect(a.confirmed.frame).toBe(1000);
   });
+
+  it('重連後可從比賽中途的狀態重新開始，雙方仍一致', () => {
+    const cfg = defaultConfig();
+    let mid = createState(5);
+    const r = new Rng(77);
+    for (let i = 0; i < 400; i++) mid = step(mid, r.int(32), r.int(32), cfg);
+    const a = new RollbackSession(mid, cfg, 0, 2);
+    const b = new RollbackSession(mid, cfg, 1, 2);
+    expect(a.frame).toBe(400);
+    for (let t = 0; t < 600; t++) {
+      for (const [s, o] of [[a, b], [b, a]] as const) {
+        if (s.canAdvance()) {
+          s.addLocalInput(r.int(32));
+          s.advance();
+        }
+        if (t % 3 === 0) o.receive(decodePacket(encodePacket(s.packet()))!);
+      }
+    }
+    for (let k = 0; k < 50; k++) {
+      a.receive(decodePacket(encodePacket(b.packet()))!);
+      b.receive(decodePacket(encodePacket(a.packet()))!);
+    }
+    const f = Math.min(a.confirmed.frame, b.confirmed.frame);
+    expect(f).toBeGreaterThan(900);
+    expect(a.hashAt(Math.floor(f / 30) * 30)).toBe(b.hashAt(Math.floor(f / 30) * 30));
+  });
 });

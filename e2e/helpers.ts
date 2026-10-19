@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from '@playwright/test';
+import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 
 export const PEER = { host: 'localhost', port: 9123, path: '/', secure: false, config: { iceServers: [] } };
 
@@ -9,8 +9,10 @@ export interface NetSim {
 }
 
 /** 以固定設定（英文、5 分、快速、靜音）開一個新的瀏覽器環境 */
-export async function newPlayer(browser: Browser, net: NetSim = {}, settings: Record<string, unknown> = {}): Promise<BrowserContext> {
-  const ctx = await browser.newContext();
+export async function newPlayer(
+  browser: Browser, net: NetSim = {}, settings: Record<string, unknown> = {}, options: BrowserContextOptions = {},
+): Promise<BrowserContext> {
+  const ctx = await browser.newContext(options);
   await ctx.addInitScript(
     ({ net, settings }) => {
       if (!sessionStorage.getItem('e2e-init')) {

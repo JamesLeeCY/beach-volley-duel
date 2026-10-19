@@ -72,12 +72,14 @@ export class RollbackSession {
     this.state = cloneState(initial);
     this.confirmed = cloneState(initial);
     this.snapshots.set(initial.frame, cloneState(initial));
-    // 前 delay 幀沒有輸入，雙方都視為 0
-    for (let f = 1; f <= delay; f++) {
+    // 開局（或重連後重新開始）的前 delay 幀沒有輸入，雙方都視為 0
+    const base = initial.frame;
+    for (let f = base + 1; f <= base + delay; f++) {
       this.localInputs.set(f, 0);
       this.remoteInputs.set(f, 0);
     }
-    this.remoteContiguous = delay;
+    this.remoteContiguous = base + delay;
+    this.remoteFrame = base;
   }
 
   get frame() {

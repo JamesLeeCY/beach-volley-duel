@@ -127,6 +127,12 @@ export class Renderer {
     this.canvas.height = Math.round(cssH * dpr);
   }
 
+  /** 繪圖出錯後重設畫布狀態（清掉殘留的 save()、合成模式、透明度） */
+  recover() {
+    const w = this.canvas.width;
+    this.canvas.width = w;
+  }
+
   /** 從事件產生特效（只在新幀呼叫一次） */
   spawnEffects(events: GameEvent[], mirror: boolean) {
     for (const e of events) {

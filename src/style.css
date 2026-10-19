@@ -507,10 +507,26 @@ input.code-input {
   pointer-events: none;
 }
 
+/* 動作感應區：右半邊，按鈕只是視覺提示 */
+.touch-action-zone {
+  position: absolute;
+  right: 0;
+  top: 18%;
+  bottom: 0;
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-controls.swapped .touch-action-zone {
+  right: auto;
+  left: 0;
+}
+
 .touch-btn {
   position: absolute;
   border-radius: 50%;
-  pointer-events: auto;
+  pointer-events: none;
   touch-action: none;
   opacity: var(--touch-opacity);
   border: 3px solid #1d3557;

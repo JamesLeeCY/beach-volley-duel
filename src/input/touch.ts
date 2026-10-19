@@ -1,7 +1,9 @@
 // 手機觸控（荒野亂鬥式）：
 // - 左半邊任意位置按下，搖桿就出現在手指下（浮動搖桿）；放開回到左下角待命位置。
-// - 右下大圓鈕＝擊球：點一下直接擊球；按住拖曳可以瞄準（拖的方向＝扣殺球路，同方向鍵）。
-// - 擊球鈕左上方的小圓鈕＝跳。
+// - 右半邊是動作區：靠近「跳」鈕的位置按下＝跳，其他任何位置按下＝擊球。
+//   擊球按住拖曳可以瞄準（拖的方向＝扣殺球路，同方向鍵）。按鈕只是視覺提示，
+//   實際感應範圍是整個右半邊，手指不用對得很準，按住時滑出按鈕也不會斷。
+// - 很快的點擊（比一個邏輯幀 40 ms 還短）會先記住，等遊戲讀到後才清除，不會漏掉。
 // 各按鍵以 pointerId 獨立追蹤，可同時「移動＋跳＋擊球」。
 import { IN_DOWN, IN_HIT, IN_LEFT, IN_RIGHT, IN_UP, type InputFrame } from '../engine/types';
 import type { Settings } from '../ui/settings';
@@ -43,6 +45,10 @@ export class TouchControls {
   private hitCx = 0;
   private hitCy = 0;
   private jumpPointers = new Set<number>();
+  /** 按下後尚未被遊戲讀到的點擊（避免快速點擊在兩幀之間被漏掉） */
+  private hitLatched = false;
+  private jumpLatched = false;
+  private actionZone: HTMLDivElement;
   private vibrate = true;
   private floating = true;
   private swapped = false;
@@ -65,12 +71,13 @@ export class TouchControls {
     this.jumpBtn = this.el('touch-btn touch-jump');
     this.jumpBtn.append(this.el('btn-icon jump-icon'));
     actions.append(this.jumpBtn, this.hitBtn);
-    this.root.append(this.zone, actions);
+    // 動作感應區：右半邊（或互換後左半邊）
+    this.actionZone = this.el('touch-action-zone');
+    this.root.append(this.zone, this.actionZone, actions);
     parent.appendChild(this.root);
 
     this.bindStick();
-    this.bindHit();
-    this.bindJump();
+    this.bindActions();
     this.root.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('resize', () => this.resetStick());
   }
@@ -129,6 +136,7 @@ export class TouchControls {
     };
     this.zone.addEventListener('pointerup', end);
     this.zone.addEventListener('pointercancel', end);
+    this.zone.addEventListener('lostpointercapture', end);
   }
 
   private updateStick(e: PointerEvent) {
@@ -154,28 +162,49 @@ export class TouchControls {
     b.style.bottom = '';
   }
 
-  // ------------------------------------------------------------ 擊球（可瞄準）
-  private bindHit() {
-    const btn = this.hitBtn;
-    btn.addEventListener('pointerdown', (e) => {
-      if (this.hitPointer !== null) return;
+  // ------------------------------------------------------------ 擊球（可瞄準）＋跳
+  private center(el: HTMLElement) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, rad: r.width / 2 };
+  }
+
+  private bindActions() {
+    const zone = this.actionZone;
+    const hit = this.hitBtn;
+    const jump = this.jumpBtn;
+    zone.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      this.hitPointer = e.pointerId;
       try {
-        btn.setPointerCapture(e.pointerId);
+        zone.setPointerCapture(e.pointerId);
       } catch {
         // 已放開的指標
       }
-      const r = btn.getBoundingClientRect();
-      this.hitCx = r.left + r.width / 2;
-      this.hitCy = r.top + r.height / 2;
-      this.aimBits = 0;
-      btn.classList.add('active');
+      const j = this.center(jump);
+      const h = this.center(hit);
+      const dj = Math.hypot(e.clientX - j.x, e.clientY - j.y);
+      const dh = Math.hypot(e.clientX - h.x, e.clientY - h.y);
+      // 離跳鈕夠近、且比離擊球鈕近 → 跳；其他位置都算擊球
+      if (dj < j.rad * 1.7 && dj < dh) {
+        this.jumpPointers.add(e.pointerId);
+        this.jumpLatched = true;
+        jump.classList.add('active');
+      } else if (this.hitPointer === null) {
+        this.hitPointer = e.pointerId;
+        this.hitLatched = true;
+        // 從擊球鈕附近按下時以按鈕中心為瞄準原點，離很遠時以手指位置為原點
+        const nearBtn = dh < h.rad * 1.8;
+        this.hitCx = nearBtn ? h.x : e.clientX;
+        this.hitCy = nearBtn ? h.y : e.clientY;
+        this.aimBits = 0;
+        hit.classList.add('active');
+      } else {
+        return;
+      }
       this.buzz();
     });
-    btn.addEventListener('pointermove', (e) => {
+    zone.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.hitPointer) return;
-      const rad = btn.getBoundingClientRect().width / 2;
+      const rad = this.center(hit).rad;
       const dx = e.clientX - this.hitCx;
       const dy = e.clientY - this.hitCy;
       const dist = Math.hypot(dx, dy);
@@ -183,40 +212,25 @@ export class TouchControls {
       const nx = dist ? dx / dist : 0;
       const ny = dist ? dy / dist : 0;
       const bits = dirBits(nx, ny, mag);
-      btn.classList.toggle('aiming', bits !== 0);
+      hit.classList.toggle('aiming', bits !== 0);
       this.aimKnob.style.transform = bits ? `translate(${nx * rad * 0.9}px, ${ny * rad * 0.9}px)` : '';
       this.aimRing.style.transform = bits ? `rotate(${Math.atan2(ny, nx)}rad)` : '';
       if (bits !== this.aimBits && bits) this.buzz();
       this.aimBits = bits;
     });
     const end = (e: PointerEvent) => {
-      if (e.pointerId !== this.hitPointer) return;
-      this.hitPointer = null;
-      this.aimBits = 0;
-      btn.classList.remove('active', 'aiming');
-      this.aimKnob.style.transform = '';
-      this.aimRing.style.transform = '';
+      if (this.jumpPointers.delete(e.pointerId) && !this.jumpPointers.size) jump.classList.remove('active');
+      if (e.pointerId === this.hitPointer) {
+        this.hitPointer = null;
+        this.aimBits = 0;
+        hit.classList.remove('active', 'aiming');
+        this.aimKnob.style.transform = '';
+        this.aimRing.style.transform = '';
+      }
     };
-    btn.addEventListener('pointerup', end);
-    btn.addEventListener('pointercancel', end);
-  }
-
-  // ------------------------------------------------------------ 跳
-  private bindJump() {
-    const btn = this.jumpBtn;
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.jumpPointers.add(e.pointerId);
-      btn.classList.add('active');
-      this.buzz();
-    });
-    const up = (e: PointerEvent) => {
-      this.jumpPointers.delete(e.pointerId);
-      if (!this.jumpPointers.size) btn.classList.remove('active');
-    };
-    btn.addEventListener('pointerup', up);
-    btn.addEventListener('pointercancel', up);
-    btn.addEventListener('pointerleave', up);
+    zone.addEventListener('pointerup', end);
+    zone.addEventListener('pointercancel', end);
+    zone.addEventListener('lostpointercapture', end);
   }
 
   apply(s: Settings) {
@@ -240,15 +254,22 @@ export class TouchControls {
       this.hitPointer = null;
       this.aimBits = 0;
       this.jumpPointers.clear();
+      this.hitLatched = false;
+      this.jumpLatched = false;
+      this.hitBtn.classList.remove('active', 'aiming');
+      this.jumpBtn.classList.remove('active');
       this.resetStick();
     }
   }
 
+  /** 每個邏輯幀呼叫一次；快速點擊至少會被讀到一次 */
   read(): InputFrame {
     // 瞄準中以瞄準方向為準（決定扣殺球路）；否則用移動搖桿
     let v = this.aimBits || this.move.bits;
-    if (this.jumpPointers.size) v |= IN_UP;
-    if (this.hitPointer !== null) v |= IN_HIT;
+    if (this.jumpPointers.size || this.jumpLatched) v |= IN_UP;
+    if (this.hitPointer !== null || this.hitLatched) v |= IN_HIT;
+    this.jumpLatched = false;
+    this.hitLatched = false;
     return v;
   }
 }

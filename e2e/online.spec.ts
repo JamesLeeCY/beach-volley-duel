@@ -4,7 +4,7 @@ import { app, newPlayer, waitScreen, type NetSim } from './helpers';
 const KEYS = ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyT'];
 
 /** 兩個瀏覽器分別建房、加入，打完 5 分賽，檢查雙方無 desync 且結果一致 */
-async function playMatch(browser: import('@playwright/test').Browser, net: NetSim) {
+async function playMatch(browser: import('@playwright/test').Browser, net: NetSim, opts: { drop?: boolean } = {}) {
   const hostCtx = await newPlayer(browser, net);
   const guestCtx = await newPlayer(browser, net);
   const host = await hostCtx.newPage();
@@ -50,6 +50,17 @@ async function playMatch(browser: import('@playwright/test').Browser, net: NetSi
     }
   };
   const mashing = Promise.all([mash(host, 1), mash(guest, 2)]);
+  if (opts.drop) {
+    // 比賽中途切斷連線（不送 bye），雙方應自動重連、保留比分並繼續
+    await host.waitForTimeout(4000);
+    const before = await app(host, (a) => [...a.state.score]);
+    await app(guest, (a) => a.online.transport.dropForTest());
+    for (const p of [host, guest]) {
+      await p.waitForFunction(() => (window as any).app.online.resumes >= 1, null, { timeout: 30_000 });
+    }
+    const after = await app(host, (a) => [...a.state.score]);
+    expect(after[0] + after[1]).toBeGreaterThanOrEqual(before[0] + before[1]);
+  }
   try {
     await Promise.all([waitScreen(host, 'result', 200_000), waitScreen(guest, 'result', 200_000)]);
   } finally {
@@ -99,4 +110,8 @@ test('online: 150 ms latency and 5% packet loss', async ({ browser }) => {
   expect(h.rtt).toBeGreaterThanOrEqual(280);
   expect(g.rtt).toBeGreaterThanOrEqual(280);
   expect(h.rollbacks + g.rollbacks).toBeGreaterThan(0);
+});
+
+test('online: connection drops mid-match, reconnects and finishes', async ({ browser }) => {
+  await playMatch(browser, {}, { drop: true });
 });

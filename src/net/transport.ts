@@ -50,6 +50,8 @@ export class Transport {
   isHost = false;
   private closed = false;
   private timeout: number | null = null;
+  /** 曾經連上過：之後的錯誤視為斷線，交給重連處理而不是直接失敗 */
+  private everConnected = false;
 
   constructor(private ev: TransportEvents) {}
 
@@ -61,7 +63,8 @@ export class Transport {
     this.peer = peer;
     peer.on('open', () => onCode(this.code));
     peer.on('connection', (conn) => {
-      if (this.conn) {
+      // 舊連線已斷（對方重連）時接受新連線；仍在線上時才算滿房
+      if (this.conn?.open) {
         // 一房最多 2 人
         conn.on('open', () => {
           conn.send({ t: 'full' });
@@ -69,6 +72,7 @@ export class Transport {
         });
         return;
       }
+      this.conn?.close();
       this.bind(conn);
     });
     peer.on('error', (err: Error & { type?: string }) => {
@@ -81,8 +85,8 @@ export class Transport {
       this.ev.onError(err.type ?? err.message);
     });
     peer.on('disconnected', () => {
-      // 與信令伺服器斷線不影響已建立的 P2P 連線；尚未配對時嘗試重連
-      if (!this.conn && !this.closed) peer.reconnect();
+      // 與信令伺服器斷線不影響已建立的 P2P 連線，但要保持在線，對方斷線後才能重新連進來
+      if (!this.closed) peer.reconnect();
     });
   }
 
@@ -96,22 +100,46 @@ export class Transport {
       if (!this.conn?.open) this.ev.onError('timeout');
     }, CONNECT_TIMEOUT);
     peer.on('open', () => {
-      const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
-      this.bind(conn);
+      if (!this.conn?.open) this.dial();
     });
     peer.on('error', (err: Error & { type?: string }) => {
+      // 比賽中斷線後的重連錯誤（例如房主暫時離線）不算失敗，下一輪再試
+      if (this.everConnected) return;
       this.ev.onError(err.type === 'peer-unavailable' ? 'room-not-found' : err.type ?? err.message);
     });
   }
 
+  private dial() {
+    if (!this.peer || this.closed) return;
+    const conn = this.peer.connect(PREFIX + this.code, { reliable: true, serialization: 'json' });
+    this.bind(conn);
+  }
+
+  /** 加入者：斷線後重新連回同一個房間 */
+  reconnect() {
+    if (this.closed || this.isHost || !this.peer) return;
+    if (this.conn?.open) return;
+    if (this.peer.destroyed) {
+      this.join(this.code);
+    } else if (this.peer.disconnected) {
+      this.peer.reconnect(); // 重新連上信令伺服器後，open 事件會自動撥號
+    } else {
+      this.dial();
+    }
+  }
+
   private bind(conn: DataConnection) {
     this.conn = conn;
+    this.fast = null;
     conn.on('open', () => {
+      if (conn !== this.conn) return;
       if (this.timeout) clearTimeout(this.timeout);
+      this.everConnected = true;
       this.setupFastChannel(conn);
       this.ev.onOpen();
     });
     conn.on('data', (data) => {
+      if (conn !== this.conn) return;
       const m = data as NetMessage;
       if (m && m.t === 'in' && Array.isArray(m.d)) {
         this.ev.onInput(new Uint8Array(m.d as number[]).buffer);
@@ -120,9 +148,11 @@ export class Transport {
       }
     });
     conn.on('close', () => {
-      if (!this.closed) this.ev.onClose();
+      if (conn === this.conn && !this.closed) this.ev.onClose();
     });
-    conn.on('error', (e) => this.ev.onError(String(e)));
+    conn.on('error', (e) => {
+      if (conn === this.conn && !this.everConnected) this.ev.onError(String(e));
+    });
   }
 
   /** 不可靠、無序通道（雙方以相同 id 建立 negotiated channel，不需重新協商） */
@@ -132,11 +162,15 @@ export class Transport {
     try {
       const ch = pc.createDataChannel('inputs', { negotiated: true, id: 100, ordered: false, maxRetransmits: 0 });
       ch.binaryType = 'arraybuffer';
-      ch.onopen = () => (this.fast = ch);
-      ch.onmessage = (e) => {
-        if (e.data instanceof ArrayBuffer) this.ev.onInput(e.data);
+      ch.onopen = () => {
+        if (conn === this.conn) this.fast = ch;
       };
-      ch.onclose = () => (this.fast = null);
+      ch.onmessage = (e) => {
+        if (conn === this.conn && e.data instanceof ArrayBuffer) this.ev.onInput(e.data);
+      };
+      ch.onclose = () => {
+        if (this.fast === ch) this.fast = null;
+      };
     } catch {
       this.fast = null;
     }
@@ -144,6 +178,11 @@ export class Transport {
 
   get connected() {
     return !!this.conn?.open;
+  }
+
+  /** 測試用：模擬網路中斷（不送 bye，對方會進入重連流程） */
+  dropForTest() {
+    this.conn?.close();
   }
 
   send(m: NetMessage) {
