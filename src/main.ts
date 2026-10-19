@@ -518,7 +518,7 @@ class App {
     const wrap = h('div', { class: 'char-select' });
     const parts: { root: HTMLElement; canvas: HTMLCanvasElement; name: HTMLElement; stats: HTMLElement; status: HTMLElement; who: HTMLElement; okBtn: HTMLButtonElement }[] = [];
     for (const side of [0, 1] as const) {
-      const canvas = h('canvas', { width: 64, height: 64 });
+      const canvas = h('canvas', { width: 128, height: 128 });
       const name = h('div', { class: 'name' });
       const stats = h('div');
       const status = h('div', { class: 'status' });
@@ -543,35 +543,36 @@ class App {
       parts.forEach((p, side) => {
         const pack = list[slots[side].idx];
         const g = p.canvas.getContext('2d')!;
-        g.imageSmoothingEnabled = false;
-        g.clearRect(0, 0, 64, 64);
+        g.imageSmoothingEnabled = true;
+        g.imageSmoothingQuality = 'high';
+        g.clearRect(0, 0, 128, 128);
         if (pack.sprite) {
           const anim = slots[side].ready ? pack.manifest.animations.win ?? pack.manifest.animations.idle : pack.manifest.animations.idle;
           const fi = Math.floor((time / 1000) * anim.fps) % anim.frames;
           const [fw, fh] = pack.manifest.frameSize;
           g.save();
           if (side === 1) {
-            g.translate(64, 0);
+            g.translate(128, 0);
             g.scale(-1, 1);
           }
-          g.drawImage(pack.sprite, fi * fw, anim.row * fh, fw, fh, 0, 0, 64, 64);
+          g.drawImage(pack.sprite, fi * fw, anim.row * fh, fw, fh, 0, 0, 128, 128);
           g.restore();
           if (side === 1 && slots[0].idx === slots[1].idx) {
             g.globalCompositeOperation = 'hue';
             g.fillStyle = 'rgba(80,120,255,0.6)';
-            g.fillRect(0, 0, 64, 64);
+            g.fillRect(0, 0, 128, 128);
             g.globalCompositeOperation = 'destination-in';
             g.save();
-            g.translate(64, 0);
+            g.translate(128, 0);
             g.scale(-1, 1);
-            g.drawImage(pack.sprite, fi * fw, anim.row * fh, fw, fh, 0, 0, 64, 64);
+            g.drawImage(pack.sprite, fi * fw, anim.row * fh, fw, fh, 0, 0, 128, 128);
             g.restore();
             g.globalCompositeOperation = 'source-over';
           }
         } else {
           g.fillStyle = pack.manifest.themeColor;
           g.beginPath();
-          g.arc(32, 36, 24, 0, Math.PI * 2);
+          g.arc(64, 72, 48, 0, Math.PI * 2);
           g.fill();
         }
       });

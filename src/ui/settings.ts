@@ -27,7 +27,7 @@ export function defaultSettings(): Settings {
   return {
     speed: 'normal',
     targetScore: 15,
-    graphics: 'sharp',
+    graphics: 'smooth',
     bgm: true,
     sfx: 'stereo',
     balance: true,

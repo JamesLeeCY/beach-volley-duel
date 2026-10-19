@@ -1,6 +1,7 @@
 // Canvas 2D 繪圖：邏輯解析度 432×304，等比放大置中；在兩個邏輯幀之間內插位置。
 import * as C from '../engine/constants';
 import { Phase, PState, type GameEvent, type GameState, type PlayerState } from '../engine/types';
+import { Scenery } from './scenery';
 import { animOf, type AnimName, type CharacterPack } from '../characters/registry';
 
 const FP = C.FP;
@@ -72,12 +73,7 @@ export class Renderer {
   private trail: { x: number; y: number }[] = [];
   private ballAngle = 0;
   private lastFrame = -1;
-  private clouds = [
-    { x: 40, y: 34, w: 60, s: 0.15 },
-    { x: 200, y: 60, w: 44, s: 0.1 },
-    { x: 330, y: 26, w: 70, s: 0.2 },
-    { x: 120, y: 88, w: 36, s: 0.08 },
-  ];
+  private scenery = new Scenery();
   private shake = 0;
   private viewW = W;
   private viewH = H;
@@ -226,6 +222,8 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
 
+    this.scenery.drawOverlay(ctx, time, -this.offX, -this.offY, W + this.offX, H + this.offY);
+
     // 比分
     const s0 = cur.score[view.mirror ? 1 : 0];
     const s1 = cur.score[view.mirror ? 0 : 1];
@@ -243,63 +241,12 @@ export class Renderer {
 
   private drawBackground(time: number) {
     const ctx = this.ctx;
-    // 可見範圍（手機填滿螢幕時會超出場地）
-    const L = -this.offX - 1;
-    const R = W + this.offX + 1;
-    const T = -this.offY - 1;
-    const B = H + this.offY + 1;
-    const sky = ctx.createLinearGradient(0, 0, 0, 150);
-    sky.addColorStop(0, '#4aa3f0');
-    sky.addColorStop(1, '#bfe6ff');
-    ctx.fillStyle = sky;
-    ctx.fillRect(L, T, R - L, 152 - T);
-    // 太陽
-    ctx.fillStyle = 'rgba(255,240,170,0.5)';
-    ctx.beginPath();
-    ctx.arc(360, 46, 26, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff3b0';
-    ctx.beginPath();
-    ctx.arc(360, 46, 18, 0, Math.PI * 2);
-    ctx.fill();
-    // 雲
-    ctx.fillStyle = '#ffffff';
-    const span = R - L;
-    for (const c of this.clouds) {
-      const x = L + (((c.x - L + time * c.s * 0.02) % (span + c.w * 2)) + span + c.w * 2) % (span + c.w * 2) - c.w;
-      this.ellipse(x, c.y, c.w / 2, c.w / 6);
-      this.ellipse(x - c.w / 5, c.y - c.w / 10, c.w / 4, c.w / 6);
-      this.ellipse(x + c.w / 6, c.y - c.w / 8, c.w / 5, c.w / 6);
-    }
-    // 海
-    const sea = ctx.createLinearGradient(0, 150, 0, 196);
-    sea.addColorStop(0, '#1d7fc4');
-    sea.addColorStop(1, '#3fb4d8');
-    ctx.fillStyle = sea;
-    ctx.fillRect(L, 150, R - L, 48);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    for (let row = 0; row < 3; row++) {
-      const y = 160 + row * 12;
-      const off = (time * 0.012 * (row + 1)) % 48;
-      const start = Math.floor(L / 48) * 48 - 48;
-      for (let x = start; x < R + 48; x += 48) ctx.fillRect(x + off + row * 13, y, 14 - row * 2, 2);
-    }
-    // 浪花
-    const surf = 196 + Math.sin(time * 0.002) * 2;
-    ctx.fillStyle = '#e9f8ff';
-    ctx.fillRect(L, surf - 2, R - L, 4);
-    // 沙灘
-    const sand = ctx.createLinearGradient(0, surf, 0, H);
-    sand.addColorStop(0, '#f6dd9b');
-    sand.addColorStop(1, '#e8c26e');
-    ctx.fillStyle = sand;
-    ctx.fillRect(L, surf + 2, R - L, B - surf);
-    ctx.fillStyle = 'rgba(190,140,60,0.35)';
-    for (let i = 0; i < 60; i++) {
-      const x = L + ((i * 97) % Math.max(1, Math.ceil(R - L)));
-      const y = 210 + ((i * 53) % 90);
-      ctx.fillRect(x, y, 2, 1);
-    }
+    const L = -this.offX;
+    const R = W + this.offX;
+    const T = -this.offY;
+    const B = H + this.offY;
+    // 多畫一點邊，畫面震動時不會露出黑邊
+    this.scenery.draw(ctx, time, this.canvas.width / this.viewW, L - 6, T - 6, R + 6, B + 6);
     // 場地線
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillRect(0, C.GROUND_Y + 1, W, 2);

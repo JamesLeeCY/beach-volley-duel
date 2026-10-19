@@ -6,8 +6,8 @@
   },
   "sprite": "sprite.png",
   "frameSize": [
-    64,
-    64
+    128,
+    128
   ],
   "animations": {
     "idle": {

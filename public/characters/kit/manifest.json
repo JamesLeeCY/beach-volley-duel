@@ -6,8 +6,8 @@
   },
   "sprite": "sprite.png",
   "frameSize": [
-    64,
-    64
+    128,
+    128
   ],
   "animations": {
     "idle": {
@@ -57,5 +57,5 @@
   },
   "sfx": {},
   "portrait": "portrait.png",
-  "themeColor": "#5DBB63"
+  "themeColor": "#7CC26B"
 }
