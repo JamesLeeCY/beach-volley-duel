@@ -6,7 +6,7 @@
 | --- | --- |
 | 角色精靈圖（桃桃、雲雲、小葉、苔苔、燈燈、麻糬，128×128 柔和光影） | `scripts/gen-assets.mjs` 以程式逐像素繪製（原創角色，未參考任何既有角色造型） |
 | PWA 圖示 | 同上 |
-| 場景（天空、積雲、光束、鏡頭光斑、海面波光、島影、沙灘、網子、球） | `src/render/scenery.ts`、`src/render/renderer.ts` 以 Canvas 2D 即時繪製 |
+| 場景（夏日海灘、黃昏湖畔、彗星之夜：天空、積雲、光束、鏡頭光斑、星空、彗星、流星、山稜、湖面倒影、沙灘、網子、排球配色） | `src/render/scenery.ts`、`src/render/renderer.ts` 以 Canvas 2D 即時繪製 |
 | 音效與背景音樂 | `src/audio/audio.ts` 以 Web Audio API 即時合成 |
 
 ## 參考（僅參考遊戲行為，未複製任何程式碼或素材）

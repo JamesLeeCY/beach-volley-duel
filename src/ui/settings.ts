@@ -1,5 +1,7 @@
 import type { Speed } from '../engine/constants';
 import { detectLang, type Lang } from '../i18n';
+import type { SceneId } from '../render/scenery';
+import type { BallSkin } from '../render/renderer';
 import { cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, LEGACY_KEYMAPS, sanitizeKeymap, type KeyMap } from '../input/keyboard';
 
 export interface Settings {
@@ -21,6 +23,10 @@ export interface Settings {
   keys: [KeyMap, KeyMap];
   /** 預設鍵位版本；v2 起 1P 為 WASD＋T、2P 為方向鍵＋M */
   keysVersion: number;
+  /** 背景場景；random = 每場隨機 */
+  scene: SceneId | 'random';
+  /** 排球配色；random = 每場隨機 */
+  ball: BallSkin | 'random';
 }
 
 export const KEYS_VERSION = 2;
@@ -44,6 +50,8 @@ export function defaultSettings(): Settings {
     selfLeft: true,
     keys: [cloneKeymap(DEFAULT_KEYMAP_1P), cloneKeymap(DEFAULT_KEYMAP_2P)],
     keysVersion: KEYS_VERSION,
+    scene: 'beach',
+    ball: 'classic',
   };
 }
 

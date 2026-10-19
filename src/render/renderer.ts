@@ -1,12 +1,22 @@
 // Canvas 2D 繪圖：邏輯解析度 432×304，等比放大置中；在兩個邏輯幀之間內插位置。
 import * as C from '../engine/constants';
 import { Phase, PState, type GameEvent, type GameState, type PlayerState } from '../engine/types';
-import { Scenery } from './scenery';
+import { Scenery, type SceneId } from './scenery';
 import { animOf, type AnimName, type CharacterPack } from '../characters/registry';
 
 const FP = C.FP;
 const W = C.FIELD_W;
 const H = C.FIELD_H;
+
+export type BallSkin = 'classic' | 'red' | 'blue' | 'ultra';
+
+/** 排球配色：底色、兩種色塊、縫線、外框 */
+export const BALL_SKINS: Record<BallSkin, { base: string; a: string; b: string; seam: string; outline: string }> = {
+  classic: { base: '#ffffff', a: '#2f7fe0', b: '#ffc531', seam: '#1d3557', outline: '#1d3557' },
+  red: { base: '#ffffff', a: '#e53935', b: '#ffffff', seam: '#5c1a1a', outline: '#3a1212' },
+  blue: { base: '#ffffff', a: '#2f6fe0', b: '#e53935', seam: '#1a2c5c', outline: '#14204a' },
+  ultra: { base: '#ffffff', a: '#2a2a2e', b: '#f6c625', seam: '#111114', outline: '#111114' },
+};
 
 export interface View {
   /** 鏡像繪圖（線上時自己永遠在左側） */
@@ -15,6 +25,8 @@ export interface View {
   /** 2P 套用色調偏移（同角色時） */
   hueShift2: boolean;
   smooth: boolean;
+  ball: BallSkin;
+  scene: SceneId;
 }
 
 interface Particle {
@@ -146,6 +158,7 @@ export class Renderer {
 
   draw(prev: GameState, cur: GameState, alpha: number, view: View, time: number) {
     const ctx = this.ctx;
+    this.scenery.setTheme(view.scene);
     const k = this.canvas.width / this.viewW;
     ctx.setTransform(k, 0, 0, k, this.offX * k, this.offY * k);
     ctx.imageSmoothingEnabled = view.smooth;
@@ -213,7 +226,7 @@ export class Renderer {
     });
     ctx.globalAlpha = 1;
     const squash = cur.phase !== Phase.Play && by >= C.GROUND_Y - C.BALL_R - 2;
-    this.drawBall(bx, by, squash);
+    this.drawBall(bx, by, squash, view.ball);
 
     for (const pt of this.particles) {
       ctx.globalAlpha = 1 - pt.life / pt.max;
@@ -329,34 +342,59 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawBall(x: number, y: number, squash: boolean) {
+  private drawBall(x: number, y: number, squash: boolean, skin: BallSkin) {
     const ctx = this.ctx;
     const R = C.BALL_R;
+    const pal = BALL_SKINS[skin] ?? BALL_SKINS.classic;
     ctx.save();
     ctx.translate(x, y + (squash ? 4 : 0));
     if (squash) ctx.scale(1.2, 0.8);
     ctx.beginPath();
     ctx.arc(0, 0, R, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = pal.base;
     ctx.fill();
     ctx.save();
     ctx.clip();
     ctx.rotate(this.ballAngle);
-    ctx.fillStyle = '#2f7fe0';
-    ctx.beginPath();
-    ctx.ellipse(-R * 0.55, -R * 0.2, R * 0.5, R * 1.1, 0.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffc531';
-    ctx.beginPath();
-    ctx.ellipse(R * 0.45, R * 0.5, R * 0.9, R * 0.35, -0.3, 0, Math.PI * 2);
-    ctx.fill();
+    // 排球的三組弧形色塊
+    const panel = (rot: number, color: string) => {
+      ctx.save();
+      ctx.rotate(rot);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(0, -R * 1.25, R * 1.15, 0.22 * Math.PI, 0.78 * Math.PI);
+      ctx.arc(0, -R * 1.85, R * 1.3, 0.72 * Math.PI, 0.28 * Math.PI, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
+    panel(0, pal.a);
+    panel((Math.PI * 2) / 3, pal.b);
+    panel((Math.PI * 4) / 3, pal.a);
+    // 縫線
+    ctx.strokeStyle = pal.seam;
+    ctx.lineWidth = 0.9;
+    for (let i = 0; i < 3; i++) {
+      ctx.save();
+      ctx.rotate((i * Math.PI * 2) / 3);
+      ctx.beginPath();
+      ctx.arc(0, -R * 1.25, R * 1.15, 0.2 * Math.PI, 0.8 * Math.PI);
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.restore();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    // 立體感：左上受光、右下陰影
+    const shade = ctx.createRadialGradient(-R * 0.4, -R * 0.45, R * 0.1, 0, 0, R * 1.05);
+    shade.addColorStop(0, 'rgba(255,255,255,0.55)');
+    shade.addColorStop(0.35, 'rgba(255,255,255,0)');
+    shade.addColorStop(0.8, 'rgba(20,30,60,0.08)');
+    shade.addColorStop(1, 'rgba(20,30,60,0.32)');
+    ctx.fillStyle = shade;
     ctx.beginPath();
-    ctx.arc(-R * 0.35, -R * 0.4, R * 0.22, 0, Math.PI * 2);
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
     ctx.fill();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#1d3557';
+    ctx.strokeStyle = pal.outline;
     ctx.beginPath();
     ctx.arc(0, 0, R - 0.5, 0, Math.PI * 2);
     ctx.stroke();

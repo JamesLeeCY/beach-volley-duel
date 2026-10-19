@@ -718,3 +718,8 @@ input.code-input {
   border-color: var(--accent);
   background: rgba(255, 255, 255, 0.08);
 }
+
+.look-pickers {
+  max-width: 560px;
+  margin: 10px auto 0;
+}

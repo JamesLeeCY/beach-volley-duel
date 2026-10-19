@@ -4,7 +4,8 @@ import { FPS_BY_SPEED } from './engine/constants';
 import { createState, defaultConfig, step } from './engine/physics';
 import { AiController, type Difficulty } from './engine/ai';
 import { IN_LEFT, IN_RIGHT, Phase, type GameEvent, type GameState, type InputFrame, type MatchConfig } from './engine/types';
-import { Renderer } from './render/renderer';
+import { BALL_SKINS, Renderer, type BallSkin } from './render/renderer';
+import { SCENES, type SceneId } from './render/scenery';
 import { audio } from './audio/audio';
 import {
   applyKeymaps, canBind, cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, Keyboard, KEY_ACTIONS, KEYMAP_1P, KEYMAP_2P,
@@ -63,6 +64,8 @@ class App {
   private menuKeyHandler: ((a: 'left' | 'right' | 'up' | 'down' | 'ok', side: 0 | 1 | null) => void) | null = null;
   private backHandler: (() => void) | null = null;
   private padPrev = [0, 0];
+  scene: SceneId = 'beach';
+  ball: BallSkin = 'classic';
   private touchSeen = false;
   private needRefresh: ((reload?: boolean) => Promise<void>) | null = null;
 
@@ -174,6 +177,8 @@ class App {
       chars: [getCharacter(this.chars[0]), getCharacter(this.chars[1])] as [CharacterPack, CharacterPack],
       hueShift2: this.chars[0] === this.chars[1],
       smooth: this.settings.graphics === 'smooth',
+      scene: this.scene,
+      ball: this.ball,
     };
     this.renderer.draw(this.prev, this.state, this.paused ? 1 : this.acc / stepMs, view, now);
     requestAnimationFrame((t1) => this.frame(t1));
@@ -239,8 +244,17 @@ class App {
   }
 
   // ---------------------------------------------------------------- matches
+  /** 依設定決定這一場的場景與排球（隨機時每場重抽） */
+  private rollLook() {
+    const pick = <T,>(list: readonly T[]) => list[(Math.random() * list.length) | 0];
+    const s = this.settings;
+    this.scene = s.scene === 'random' ? pick(SCENES) : s.scene;
+    this.ball = s.ball === 'random' ? pick(Object.keys(BALL_SKINS) as BallSkin[]) : s.ball;
+  }
+
   private startDemo() {
     this.mode = 'demo';
+    this.rollLook();
     this.cfg = defaultConfig({ targetScore: 99 });
     const seed = (Math.random() * 2 ** 31) | 0;
     this.state = this.prev = createState(seed);
@@ -256,6 +270,7 @@ class App {
 
   private startLocalMatch(mode: 'cpu' | 'local' | 'practice') {
     this.mode = mode;
+    this.rollLook();
     const seed = (Math.random() * 2 ** 31) | 0;
     this.cfg = defaultConfig({
       targetScore: this.settings.targetScore,
@@ -496,6 +511,7 @@ class App {
     const el = h('div', { class: 'screen wide' },
       h('h2', {}, t('chooseChar')),
       panels.el,
+      this.lookPickers(),
       h('p', { class: 'help' }, t('confirmHint')),
       h('div', { class: 'menu row' }, button(t('back'), () => (mode === 'cpu' ? this.showCpuSetup() : this.showModes()), 'secondary')),
     );
@@ -605,6 +621,40 @@ class App {
     return { el: wrap, refresh, act };
   }
 
+  // ---------------------------------------------------------------- 場景／排球選擇
+  private sceneSeg() {
+    const s = this.settings;
+    return segmented<Settings['scene']>([
+      { value: 'beach', label: t('sceneBeach') }, { value: 'lake', label: t('sceneLake') },
+      { value: 'comet', label: t('sceneComet') }, { value: 'random', label: t('random') },
+    ], s.scene, (v) => {
+      s.scene = v;
+      saveSettings(s);
+      this.rollLook();
+    });
+  }
+
+  private ballSeg() {
+    const s = this.settings;
+    return segmented<Settings['ball']>([
+      { value: 'classic', label: t('ballClassic') }, { value: 'red', label: t('ballRed') },
+      { value: 'blue', label: t('ballBlue') }, { value: 'ultra', label: t('ballUltra') },
+      { value: 'random', label: t('random') },
+    ], s.ball, (v) => {
+      s.ball = v;
+      saveSettings(s);
+      this.rollLook();
+    });
+  }
+
+  /** 選角畫面下方的場景、排球選擇（選了背景會立刻換） */
+  private lookPickers() {
+    return h('div', { class: 'look-pickers' },
+      h('div', { class: 'opt-row' }, h('label', {}, t('scene')), this.sceneSeg()),
+      h('div', { class: 'opt-row' }, h('label', {}, t('ballSkin')), this.ballSeg()),
+    );
+  }
+
   // ---------------------------------------------------------------- settings
   showSettings(back: () => void) {
     const s = this.settings;
@@ -625,6 +675,8 @@ class App {
       ], s.speed, (v) => { s.speed = v as Settings['speed']; save(); })),
       row(t('targetScore'), segmented([{ value: 5, label: '5' }, { value: 10, label: '10' }, { value: 15, label: '15' }],
         s.targetScore, (v) => { s.targetScore = v as Settings['targetScore']; save(); })),
+      row(t('scene'), this.sceneSeg()),
+      row(t('ballSkin'), this.ballSeg()),
       row(t('graphics'), segmented([{ value: 'sharp', label: t('sharp') }, { value: 'smooth', label: t('smooth') }],
         s.graphics, (v) => { s.graphics = v as Settings['graphics']; save(); })),
       row(t('bgm'), onOff('bgm')),
@@ -1073,6 +1125,7 @@ class App {
 
   private onlineCountdown(info: StartInfo) {
     this.mode = 'online';
+    this.rollLook();
     this.chars = info.chars;
     this.resultShown = false;
     this.onlineStarted = false;
