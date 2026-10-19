@@ -435,7 +435,7 @@ input.code-input {
   display: flex;
 }
 
-/* ---------- touch controls ---------- */
+/* ---------- touch controls（荒野亂鬥式，疊在畫面上） ---------- */
 .touch-controls {
   position: absolute;
   inset: 0;
@@ -443,6 +443,12 @@ input.code-input {
   display: none;
   --touch-scale: 1;
   --touch-opacity: 0.6;
+  --stick: calc(120px * var(--touch-scale));
+  --hit: calc(92px * var(--touch-scale));
+  --jump: calc(64px * var(--touch-scale));
+  --edge-l: calc(env(safe-area-inset-left) + 28px);
+  --edge-r: calc(env(safe-area-inset-right) + 28px);
+  --edge-b: calc(env(safe-area-inset-bottom) + 22px);
   z-index: 4;
 }
 
@@ -450,36 +456,144 @@ input.code-input {
   display: block;
 }
 
-.touch-pad,
-.touch-buttons {
+/* 搖桿感應區：左半邊，避開上方 HUD */
+.touch-zone {
   position: absolute;
-  bottom: calc(env(safe-area-inset-bottom) + 14px);
+  left: 0;
+  top: 18%;
+  bottom: 0;
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.stick-base {
+  position: absolute;
+  left: var(--edge-l);
+  bottom: var(--edge-b);
+  width: var(--stick);
+  height: var(--stick);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0 55%, rgba(255, 255, 255, 0.22) 56% 100%);
+  border: 3px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 0 2px rgba(29, 53, 87, 0.35);
+  opacity: calc(var(--touch-opacity) * 0.8);
+  transition: opacity 0.12s;
+}
+
+.stick-base.active {
+  opacity: max(var(--touch-opacity), 0.75);
+}
+
+.stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44%;
+  height: 44%;
+  margin: -22% 0 0 -22%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #cfe6ff 70%);
+  border: 3px solid #1d3557;
+  box-shadow: 0 3px 0 rgba(29, 53, 87, 0.6);
+}
+
+.touch-actions {
+  position: absolute;
+  right: var(--edge-r);
+  bottom: var(--edge-b);
+  width: calc(var(--hit) + var(--jump) + 24px);
+  height: calc(var(--hit) + var(--jump) * 0.75);
+  pointer-events: none;
+}
+
+.touch-btn {
+  position: absolute;
+  border-radius: 50%;
   pointer-events: auto;
   touch-action: none;
   opacity: var(--touch-opacity);
+  border: 3px solid #1d3557;
+  box-shadow: 0 4px 0 rgba(29, 53, 87, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.touch-pad {
-  left: calc(env(safe-area-inset-left) + 14px);
-  width: calc(132px * var(--touch-scale));
-  height: calc(132px * var(--touch-scale));
+.touch-hit {
+  right: 0;
+  bottom: 0;
+  width: var(--hit);
+  height: var(--hit);
+  min-width: 72px;
+  min-height: 72px;
+  background: radial-gradient(circle at 35% 30%, #ffe27a, #ffb21e 75%);
+}
+
+.touch-jump {
+  right: calc(var(--hit) + 6px);
+  bottom: calc(var(--hit) * 0.62);
+  width: var(--jump);
+  height: var(--jump);
+  min-width: 56px;
+  min-height: 56px;
+  background: radial-gradient(circle at 35% 30%, #d9f0ff, #7cc0ef 75%);
+}
+
+.touch-btn.active {
+  opacity: max(var(--touch-opacity), 0.85);
+  transform: translateY(3px) scale(0.96);
+  box-shadow: 0 1px 0 rgba(29, 53, 87, 0.7);
+}
+
+.btn-icon {
+  pointer-events: none;
+}
+
+/* 擊球：排球圖示 */
+.hit-icon {
+  width: 46%;
+  height: 46%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 30%, rgba(255, 255, 255, 0.3) 31%, rgba(255, 255, 255, 0.25) 70%);
-  border: 3px solid rgba(255, 255, 255, 0.7);
+  border: 3px solid #1d3557;
+  background:
+    linear-gradient(115deg, transparent 0 38%, #1d3557 38% 44%, transparent 44%),
+    linear-gradient(-30deg, transparent 0 52%, #1d3557 52% 58%, transparent 58%),
+    #fff;
 }
 
-.touch-pad::before {
+/* 跳：向上箭頭 */
+.jump-icon {
+  width: 0;
+  height: 0;
+  border-left: calc(14px * var(--touch-scale)) solid transparent;
+  border-right: calc(14px * var(--touch-scale)) solid transparent;
+  border-bottom: calc(18px * var(--touch-scale)) solid #1d3557;
+  margin-top: -4px;
+}
+
+/* 拖曳瞄準 */
+.aim-ring {
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  border: 3px dashed rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aim-ring::after {
   content: '';
   position: absolute;
-  inset: 12%;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)) center / 26% 100% no-repeat,
-    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)) center / 100% 26% no-repeat;
-  border-radius: 8px;
-  opacity: 0.5;
+  right: -10px;
+  top: 50%;
+  margin-top: -9px;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 14px solid #fff;
 }
 
-.touch-knob {
+.aim-knob {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -487,57 +601,36 @@ input.code-input {
   height: 34%;
   margin: -17% 0 0 -17%;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.85);
+  background: #fff;
   border: 3px solid #1d3557;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.touch-buttons {
-  right: calc(env(safe-area-inset-right) + 14px);
-  display: flex;
-  gap: calc(14px * var(--touch-scale));
-  align-items: flex-end;
+.touch-hit.aiming .aim-ring,
+.touch-hit.aiming .aim-knob {
+  opacity: 1;
 }
 
-.touch-btn {
-  width: calc(76px * var(--touch-scale));
-  height: calc(76px * var(--touch-scale));
-  min-width: 64px;
-  min-height: 64px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(30px * var(--touch-scale));
-  font-weight: 800;
-  color: #1d3557;
-  border: 3px solid #1d3557;
-  box-shadow: 0 4px 0 #1d3557;
-}
-
-.touch-jump {
-  background: #9fd3f5;
-  margin-bottom: calc(46px * var(--touch-scale));
-}
-
-.touch-hit {
-  background: var(--accent);
-}
-
-.touch-btn.active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 #1d3557;
-  filter: brightness(1.2);
-}
-
-.touch-controls.swapped .touch-pad {
+/* 左右互換 */
+.touch-controls.swapped .touch-zone {
   left: auto;
-  right: calc(env(safe-area-inset-right) + 14px);
+  right: 0;
 }
 
-.touch-controls.swapped .touch-buttons {
+.touch-controls.swapped .stick-base {
+  left: auto;
+  right: var(--edge-r);
+}
+
+.touch-controls.swapped .touch-actions {
   right: auto;
-  left: calc(env(safe-area-inset-left) + 14px);
-  flex-direction: row-reverse;
+  left: var(--edge-l);
+  transform: scaleX(-1);
+}
+
+.touch-controls.swapped .btn-icon {
+  transform: scaleX(-1);
 }
 
 .pause-btn {

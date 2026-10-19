@@ -63,6 +63,7 @@ class App {
   private menuKeyHandler: ((a: 'left' | 'right' | 'up' | 'down' | 'ok', side: 0 | 1 | null) => void) | null = null;
   private backHandler: (() => void) | null = null;
   private padPrev = [0, 0];
+  private touchSeen = false;
   private needRefresh: ((reload?: boolean) => Promise<void>) | null = null;
 
   async init() {
@@ -81,7 +82,15 @@ class App {
     const unlock = () => audio.unlock();
     window.addEventListener('pointerdown', (e) => {
       unlock();
-      if (e.pointerType === 'touch' && document.body.classList.contains('in-match')) this.touch.setVisible(true);
+      if (e.pointerType === 'touch') {
+        if (!this.touchSeen) {
+          this.touchSeen = true;
+          this.resize();
+        }
+        if (document.body.classList.contains('in-match')) this.touch.setVisible(true);
+        // 手機一碰畫面就進入全螢幕（需要使用者手勢）
+        this.enterFullscreen();
+      }
     });
     window.addEventListener('keydown', unlock);
     window.addEventListener('pagehide', () => this.online?.close());
@@ -95,7 +104,15 @@ class App {
     else this.showTitle();
 
     this.setupPwa();
+    this.maybeIosHint();
     requestAnimationFrame((t0) => this.frame(t0));
+  }
+
+  /** iPhone Safari 沒有全螢幕 API：提示加到主畫面（以 App 開啟即為全螢幕） */
+  private maybeIosHint() {
+    const ios = /iPhone|iPod/.test(navigator.userAgent);
+    const standalone = (navigator as Navigator & { standalone?: boolean }).standalone || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
+    if (ios && !standalone) setTimeout(() => this.toast(t('iosHint'), [], 6000), 1500);
   }
 
   private setupPwa() {
@@ -134,7 +151,7 @@ class App {
 
   resize() {
     const r = $('#stage').getBoundingClientRect();
-    this.renderer.resize(r.width, r.height);
+    this.renderer.resize(r.width, r.height, isTouchDevice());
   }
 
   // ---------------------------------------------------------------- loop
@@ -619,6 +636,8 @@ class App {
       ], s.touchSize, (v) => { s.touchSize = v as Settings['touchSize']; save(); })),
       row(t('touchOpacity'), segmented([0.3, 0.45, 0.6, 0.8].map((v) => ({ value: v, label: `${Math.round(v * 100)}%` })),
         s.touchOpacity, (v) => { s.touchOpacity = v; save(); })),
+      row(t('touchStick'), segmented([{ value: 'float', label: t('stickFloat') }, { value: 'fixed', label: t('stickFixed') }],
+        s.touchStick, (v) => { s.touchStick = v as Settings['touchStick']; save(); })),
       row(t('touchSwap'), onOff('touchSwap')),
       row(t('vibrate'), onOff('vibrate')),
       row(t('selfLeft'), onOff('selfLeft')),

@@ -79,20 +79,40 @@ export class Renderer {
     { x: 120, y: 88, w: 36, s: 0.08 },
   ];
   private shake = 0;
+  private viewW = W;
+  private viewH = H;
+  private offX = 0;
+  private offY = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false })!;
   }
 
-  /** 依容器大小計算放大倍率；可整數倍時優先用整數倍 */
-  resize(availW: number, availH: number) {
+  /**
+   * 依容器大小計算放大倍率。
+   * fill = false：等比放大置中、可整數倍時優先用整數倍，其餘留黑邊。
+   * fill = true（手機）：畫布填滿整個螢幕，場地等比置中，多出的部分延伸畫沙灘與天空。
+   */
+  resize(availW: number, availH: number, fill = false) {
     const fit = Math.min(availW / W, availH / H);
-    const int = Math.floor(fit);
-    this.scale = int >= 2 && int / fit > 0.85 ? int : fit;
     const dpr = window.devicePixelRatio || 1;
-    const cssW = Math.floor(W * this.scale);
-    const cssH = Math.floor(H * this.scale);
+    let cssW: number;
+    let cssH: number;
+    if (fill) {
+      this.scale = fit;
+      cssW = Math.floor(availW);
+      cssH = Math.floor(availH);
+    } else {
+      const int = Math.floor(fit);
+      this.scale = int >= 2 && int / fit > 0.85 ? int : fit;
+      cssW = Math.floor(W * this.scale);
+      cssH = Math.floor(H * this.scale);
+    }
+    this.viewW = cssW / this.scale;
+    this.viewH = cssH / this.scale;
+    this.offX = (this.viewW - W) / 2;
+    this.offY = (this.viewH - H) / 2;
     this.canvas.style.width = cssW + 'px';
     this.canvas.style.height = cssH + 'px';
     this.canvas.width = Math.round(cssW * dpr);
@@ -130,8 +150,8 @@ export class Renderer {
 
   draw(prev: GameState, cur: GameState, alpha: number, view: View, time: number) {
     const ctx = this.ctx;
-    const dpr = this.canvas.width / W;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const k = this.canvas.width / this.viewW;
+    ctx.setTransform(k, 0, 0, k, this.offX * k, this.offY * k);
     ctx.imageSmoothingEnabled = view.smooth;
 
     const jump = Math.abs(cur.ball.x - prev.ball.x) > 60 * FP || cur.frame !== prev.frame + 1;
@@ -223,11 +243,16 @@ export class Renderer {
 
   private drawBackground(time: number) {
     const ctx = this.ctx;
+    // 可見範圍（手機填滿螢幕時會超出場地）
+    const L = -this.offX - 1;
+    const R = W + this.offX + 1;
+    const T = -this.offY - 1;
+    const B = H + this.offY + 1;
     const sky = ctx.createLinearGradient(0, 0, 0, 150);
     sky.addColorStop(0, '#4aa3f0');
     sky.addColorStop(1, '#bfe6ff');
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, 152);
+    ctx.fillRect(L, T, R - L, 152 - T);
     // 太陽
     ctx.fillStyle = 'rgba(255,240,170,0.5)';
     ctx.beginPath();
@@ -239,8 +264,9 @@ export class Renderer {
     ctx.fill();
     // 雲
     ctx.fillStyle = '#ffffff';
+    const span = R - L;
     for (const c of this.clouds) {
-      const x = ((c.x + time * c.s * 0.02) % (W + c.w * 2)) - c.w;
+      const x = L + (((c.x - L + time * c.s * 0.02) % (span + c.w * 2)) + span + c.w * 2) % (span + c.w * 2) - c.w;
       this.ellipse(x, c.y, c.w / 2, c.w / 6);
       this.ellipse(x - c.w / 5, c.y - c.w / 10, c.w / 4, c.w / 6);
       this.ellipse(x + c.w / 6, c.y - c.w / 8, c.w / 5, c.w / 6);
@@ -250,32 +276,47 @@ export class Renderer {
     sea.addColorStop(0, '#1d7fc4');
     sea.addColorStop(1, '#3fb4d8');
     ctx.fillStyle = sea;
-    ctx.fillRect(0, 150, W, 48);
+    ctx.fillRect(L, 150, R - L, 48);
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     for (let row = 0; row < 3; row++) {
       const y = 160 + row * 12;
       const off = (time * 0.012 * (row + 1)) % 48;
-      for (let x = -48; x < W + 48; x += 48) ctx.fillRect(x + off + row * 13, y, 14 - row * 2, 2);
+      const start = Math.floor(L / 48) * 48 - 48;
+      for (let x = start; x < R + 48; x += 48) ctx.fillRect(x + off + row * 13, y, 14 - row * 2, 2);
     }
     // 浪花
     const surf = 196 + Math.sin(time * 0.002) * 2;
     ctx.fillStyle = '#e9f8ff';
-    ctx.fillRect(0, surf - 2, W, 4);
+    ctx.fillRect(L, surf - 2, R - L, 4);
     // 沙灘
     const sand = ctx.createLinearGradient(0, surf, 0, H);
     sand.addColorStop(0, '#f6dd9b');
     sand.addColorStop(1, '#e8c26e');
     ctx.fillStyle = sand;
-    ctx.fillRect(0, surf + 2, W, H - surf);
+    ctx.fillRect(L, surf + 2, R - L, B - surf);
     ctx.fillStyle = 'rgba(190,140,60,0.35)';
-    for (let i = 0; i < 40; i++) {
-      const x = (i * 97) % W;
+    for (let i = 0; i < 60; i++) {
+      const x = L + ((i * 97) % Math.max(1, Math.ceil(R - L)));
       const y = 210 + ((i * 53) % 90);
       ctx.fillRect(x, y, 2, 1);
     }
     // 場地線
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillRect(0, C.GROUND_Y + 1, W, 2);
+    // 場地外（左右延伸區）：稍微壓暗，並在邊界立柱，讓玩家知道球會在這裡反彈
+    if (this.offX > 0.5) {
+      ctx.fillStyle = 'rgba(10,30,60,0.16)';
+      ctx.fillRect(L, T, -L, B - T);
+      ctx.fillRect(W, T, R - W, B - T);
+      for (const x of [0, W]) {
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(x - 0.5, T, 1, C.GROUND_Y - T);
+        ctx.fillStyle = '#6b4b2a';
+        ctx.fillRect(x - 2, C.GROUND_Y - 34, 4, 38);
+        ctx.fillStyle = '#d33';
+        ctx.fillRect(x - 3, C.GROUND_Y - 36, 6, 4);
+      }
+    }
   }
 
   private drawNet() {

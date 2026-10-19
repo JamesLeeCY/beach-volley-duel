@@ -12,6 +12,8 @@ export interface Settings {
   touchSize: 'small' | 'medium' | 'large';
   touchOpacity: number;
   touchSwap: boolean;
+  /** 搖桿：浮動（手指按哪就出現在哪）或固定在左下角 */
+  touchStick: 'float' | 'fixed';
   vibrate: boolean;
   lang: Lang;
   selfLeft: boolean;
@@ -32,6 +34,7 @@ export function defaultSettings(): Settings {
     touchSize: 'medium',
     touchOpacity: 0.6,
     touchSwap: false,
+    touchStick: 'float',
     vibrate: true,
     lang: detectLang(),
     selfLeft: true,
