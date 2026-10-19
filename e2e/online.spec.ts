@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { app, newPlayer, waitScreen, type NetSim } from './helpers';
 
-const KEYS = ['KeyD', 'KeyG', 'KeyR', 'KeyF', 'KeyZ'];
+const KEYS = ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyT'];
 
 /** 兩個瀏覽器分別建房、加入，打完 5 分賽，檢查雙方無 desync 且結果一致 */
 async function playMatch(browser: import('@playwright/test').Browser, net: NetSim) {

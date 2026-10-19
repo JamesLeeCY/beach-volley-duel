@@ -17,7 +17,7 @@ test('key rebinding: capture a new key, persist it, use it in game', async ({ br
   await openSettings(page);
 
   const hit1 = page.locator('[data-bind="0-hit"]');
-  await expect(hit1).toHaveText('Hit Z');
+  await expect(hit1).toHaveText('Hit T');
   await hit1.click();
   await expect(hit1).toHaveText('Hit …');
   await expect(page.getByText('Press a new key')).toBeVisible();
@@ -26,22 +26,22 @@ test('key rebinding: capture a new key, persist it, use it in game', async ({ br
   await page.keyboard.press('KeyX');
   await expect(hit1).toHaveText('Hit X');
 
-  // 把 2P 的「左」綁到 1P 已在用的 D：1P 的左因此解除
+  // 把 2P 的「左」綁到 1P 已在用的 A：1P 的左因此解除
   await page.locator('[data-bind="1-left"]').click();
-  await page.keyboard.press('KeyD');
-  await expect(page.locator('[data-bind="1-left"]')).toHaveText('Left D');
+  await page.keyboard.press('KeyA');
+  await expect(page.locator('[data-bind="1-left"]')).toHaveText('Left A');
   await expect(page.locator('[data-bind="0-left"]')).toHaveText('Left —');
 
   // Esc 取消
   await page.locator('[data-bind="0-up"]').click();
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-bind="0-up"]')).toHaveText('Jump R');
+  await expect(page.locator('[data-bind="0-up"]')).toHaveText('Jump W');
   await waitScreen(page, 'settings');
 
   // 重新整理後仍保留
   await openSettings(page);
   await expect(page.locator('[data-bind="0-hit"]')).toHaveText('Hit X');
-  await expect(page.locator('[data-bind="1-left"]')).toHaveText('Left D');
+  await expect(page.locator('[data-bind="1-left"]')).toHaveText('Left A');
 
   // 新鍵位實際作用於遊戲輸入
   await page.keyboard.down('KeyX');
@@ -53,7 +53,7 @@ test('key rebinding: capture a new key, persist it, use it in game', async ({ br
 
   // 恢復預設
   await page.getByRole('button', { name: 'Reset keys' }).click();
-  await expect(page.locator('[data-bind="0-hit"]')).toHaveText('Hit Z');
+  await expect(page.locator('[data-bind="0-hit"]')).toHaveText('Hit T');
   await expect(page.locator('[data-bind="1-left"]')).toHaveText('Left ←');
   await ctx.close();
 });

@@ -12,11 +12,11 @@ export type KeyAction = keyof KeyMap;
 export const KEY_ACTIONS: KeyAction[] = ['left', 'right', 'up', 'down', 'hit'];
 
 export const DEFAULT_KEYMAP_1P: Readonly<KeyMap> = {
-  left: ['KeyD'],
-  right: ['KeyG'],
-  up: ['KeyR'],
-  down: ['KeyF', 'KeyV'],
-  hit: ['KeyZ'],
+  left: ['KeyA'],
+  right: ['KeyD'],
+  up: ['KeyW'],
+  down: ['KeyS'],
+  hit: ['KeyT'],
 };
 
 export const DEFAULT_KEYMAP_2P: Readonly<KeyMap> = {
@@ -24,8 +24,14 @@ export const DEFAULT_KEYMAP_2P: Readonly<KeyMap> = {
   right: ['ArrowRight'],
   up: ['ArrowUp'],
   down: ['ArrowDown'],
-  hit: ['Enter', 'NumpadEnter'],
+  hit: ['KeyM'],
 };
+
+/** v1 的預設鍵位（用來判斷存檔是否從未改過，可安全升級為新預設） */
+export const LEGACY_KEYMAPS: Readonly<[KeyMap, KeyMap]> = [
+  { left: ['KeyD'], right: ['KeyG'], up: ['KeyR'], down: ['KeyF', 'KeyV'], hit: ['KeyZ'] },
+  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], hit: ['Enter', 'NumpadEnter'] },
+];
 
 /** 不可綁定的按鍵（暫停／返回／全域快捷鍵） */
 const RESERVED = new Set(['Escape', 'Space', 'Tab', 'F5', 'F11', 'F12', 'MetaLeft', 'MetaRight']);
@@ -134,7 +140,8 @@ export function menuAction(code: string): 'left' | 'right' | 'up' | 'down' | 'ok
     if (m.down.includes(code)) return 'down';
     if (m.hit.includes(code)) return 'ok';
   }
-  if (code === 'Space') return 'ok';
+  // 空白鍵與 Enter 在選單中一律是確認
+  if (code === 'Space' || code === 'Enter' || code === 'NumpadEnter') return 'ok';
   return null;
 }
 
