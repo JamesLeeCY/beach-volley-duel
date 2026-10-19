@@ -3,12 +3,42 @@
 // - lake  黃昏湖畔：群山環抱的湖、山稜後的夕陽、粉橘色的雲、對岸亮起的燈火、湖面倒影。
 // - comet 彗星之夜：滿天星斗與銀河、拖著兩道尾巴並分裂出碎片的彗星、流星、倒映星光的山中湖泊。
 // - taipei 信義夜景、zoo 木柵動物園：見 cityzoo.ts。
+// - ntu 台大椰林大道、songshan 松菸大巨蛋、expo 圓山花博、yangming 陽明山溫泉、tamsui 淡水夕陽：見 landmarks.ts。
 // 靜態部分預先畫進離屏畫布（依裝置解析度），每幀只畫會動的雲、波光、星星、流星與光點。
 
 import { drawTaipei, drawZoo, paintTaipei, paintZoo } from './cityzoo';
+import {
+  drawExpo, drawNtu, drawSongshan, drawTamsui, drawYangming,
+  paintExpo, paintNtu, paintSongshan, paintTamsui, paintYangming,
+} from './landmarks';
 
-export type SceneId = 'beach' | 'lake' | 'comet' | 'taipei' | 'zoo';
-export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo'];
+export type SceneId = 'beach' | 'lake' | 'comet' | 'taipei' | 'zoo' | 'ntu' | 'songshan' | 'expo' | 'yangming' | 'tamsui';
+export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui'];
+
+type Painter = (g: CanvasRenderingContext2D, L: number, T: number, R: number, B: number) => void;
+type Animator = (ctx: CanvasRenderingContext2D, time: number, L: number, R: number) => void;
+
+/** 景點場景：靜態畫法＋每幀動畫 */
+const LANDMARKS: Partial<Record<SceneId, { paint: Painter; draw: Animator }>> = {
+  taipei: { paint: paintTaipei, draw: drawTaipei },
+  zoo: { paint: paintZoo, draw: drawZoo },
+  ntu: { paint: paintNtu, draw: drawNtu },
+  songshan: { paint: paintSongshan, draw: drawSongshan },
+  expo: { paint: paintExpo, draw: drawExpo },
+  yangming: { paint: paintYangming, draw: drawYangming },
+  tamsui: { paint: paintTamsui, draw: drawTamsui },
+};
+
+/** 白天場景用光點＋鏡頭光斑；其他場景用色調（multiply）＋光點顏色（null = 不放光點） */
+const DAY_SCENES = new Set<SceneId>(['beach', 'zoo', 'ntu', 'expo']);
+const TINTS: Partial<Record<SceneId, { tint: string; motes: string | null }>> = {
+  lake: { tint: 'rgb(255,226,214)', motes: '255,220,150' },
+  comet: { tint: 'rgb(178,186,236)', motes: '190,255,170' },
+  taipei: { tint: 'rgb(206,196,236)', motes: null },
+  tamsui: { tint: 'rgb(255,214,190)', motes: '255,220,150' },
+  yangming: { tint: 'rgb(255,242,230)', motes: '255,240,210' },
+  songshan: { tint: 'rgb(255,238,222)', motes: '255,225,170' },
+};
 
 const SUN = { x: 330, y: 58 };
 /** 黃昏湖畔：夕陽貼近山稜 */
@@ -244,8 +274,7 @@ export class Scenery {
     g.clearRect(L, T, R - L, B - T);
     if (this.theme === 'lake') this.paintLake(g, L, T, R, B);
     else if (this.theme === 'comet') this.paintComet(g, L, T, R, B);
-    else if (this.theme === 'taipei') paintTaipei(g, L, T, R, B);
-    else if (this.theme === 'zoo') paintZoo(g, L, T, R, B);
+    else if (LANDMARKS[this.theme]) LANDMARKS[this.theme]!.paint(g, L, T, R, B);
     else this.paintBeach(g, L, T, R, B);
     this.layer = c;
     this.buildClouds(k);
@@ -551,9 +580,9 @@ export class Scenery {
         const { img, pad } = cloudCanvas(k, s.w, s.h, s.seed * 31, warm, pal);
         return { img, w: s.w + pad * 2, h: s.h + pad, x: s.x - pad, y: s.y - pad, speed: s.speed };
       });
-    if (this.theme === 'comet' || this.theme === 'taipei') {
+    if (this.theme === 'comet' || this.theme === 'taipei' || this.theme === 'yangming') {
       this.clouds = [];
-    } else if (this.theme === 'lake') {
+    } else if (this.theme === 'lake' || this.theme === 'tamsui' || this.theme === 'songshan') {
       this.clouds = make([
         { x: 40, y: 54, w: 90, h: 26, speed: 0.0009, seed: 6 },
         { x: 330, y: 70, w: 70, h: 20, speed: 0.0007, seed: 7 },
@@ -585,8 +614,7 @@ export class Scenery {
     }
 
     if (this.theme === 'beach') this.drawSea(ctx, time, L, R);
-    else if (this.theme === 'taipei') drawTaipei(ctx, time, L, R);
-    else if (this.theme === 'zoo') drawZoo(ctx, time, L, R);
+    else if (LANDMARKS[this.theme]) LANDMARKS[this.theme]!.draw(ctx, time, L, R);
     else this.drawLake(ctx, time, L, R);
     ctx.imageSmoothingEnabled = smooth;
   }
@@ -679,7 +707,7 @@ export class Scenery {
 
   /** 最上層（在所有東西之後畫） */
   drawOverlay(ctx: CanvasRenderingContext2D, time: number, L: number, T: number, R: number, B: number) {
-    if (this.theme === 'beach' || this.theme === 'zoo') this.drawDayOverlay(ctx, time, L, T, R, B);
+    if (DAY_SCENES.has(this.theme)) this.drawDayOverlay(ctx, time, L, T, R, B);
     else this.drawEveningOverlay(ctx, time, L, T, R, B);
   }
 
@@ -727,11 +755,12 @@ export class Scenery {
   /** 黃昏／夜晚：整體色調（讓角色融入光線）＋螢火蟲般的光點 */
   private drawEveningOverlay(ctx: CanvasRenderingContext2D, time: number, L: number, T: number, R: number, B: number) {
     const night = this.theme === 'comet';
+    const look = TINTS[this.theme] ?? { tint: 'rgb(255,236,220)', motes: '255,220,150' };
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = this.theme === 'taipei' ? 'rgb(206,196,236)' : night ? 'rgb(178,186,236)' : 'rgb(255,226,214)';
+    ctx.fillStyle = look.tint;
     ctx.fillRect(L, T, R - L, B - T);
-    if (this.theme === 'taipei') {
+    if (!look.motes) {
       ctx.restore();
       return;
     }
@@ -743,7 +772,7 @@ export class Scenery {
       const y = 140 + ((((m.y * 0.6 + Math.cos(time * 0.0009 + m.phase) * 10)) % band) + band) % band;
       const a = Math.max(0, Math.sin(time * 0.0025 + m.phase)) * (night ? 0.7 : 0.45);
       if (a <= 0.02) continue;
-      const c = night ? '190,255,170' : '255,220,150';
+      const c = look.motes;
       const g = ctx.createRadialGradient(x, y, 0, x, y, m.r * 3.5);
       g.addColorStop(0, `rgba(${c},${a})`);
       g.addColorStop(1, `rgba(${c},0)`);

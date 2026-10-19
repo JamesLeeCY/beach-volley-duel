@@ -264,42 +264,145 @@ export function drawTaipei(ctx: CanvasRenderingContext2D, time: number, L: numbe
     ctx.fillStyle = dir > 0 ? 'rgba(255,90,80,0.9)' : 'rgba(255,245,220,0.95)';
     ctx.fillRect(x, HORIZON - 0.4 + (dir > 0 ? 0.9 : 0), 1.4, 0.6);
   }
-  // 煙火
-  for (let slot = 0; slot < 2; slot++) {
-    const period = 3400 + slot * 1300;
-    const tt = time + slot * 1700;
-    const n = Math.floor(tt / period);
-    const p = (tt % period) / period;
-    if (p > 0.75) continue;
-    const r = rng(n * 11 + slot * 5);
-    const bx = T101.x + (r() - 0.5) * 160;
-    const by = 10 + r() * 45;
-    const h = Math.floor(r() * 360);
-    if (p < 0.15) {
-      // 升空
-      const k = p / 0.15;
-      ctx.fillStyle = `hsla(${h},100%,80%,0.9)`;
-      ctx.fillRect(bx - 0.5, HORIZON - (HORIZON - by) * k, 1, 2);
-      continue;
+  // 跨年秀：每 48 秒一輪——10 秒倒數、14 秒煙火大秀，其餘時間零星煙火
+  const cycle = (time / 1000) % NYE_PERIOD;
+  if (cycle < 10) {
+    drawCountdown(ctx, cycle, topY);
+  } else if (cycle < 24) {
+    drawFinale(ctx, cycle - 10, segs, topY);
+  } else {
+    for (let slot = 0; slot < 2; slot++) {
+      const period = 3400 + slot * 1300;
+      const tt = time + slot * 1700;
+      const n = Math.floor(tt / period);
+      const p = (tt % period) / period;
+      if (p > 0.75) continue;
+      const r = rng(n * 11 + slot * 5);
+      const bx = T101.x + (r() - 0.5) * 160;
+      const by = 10 + r() * 45;
+      const h = Math.floor(r() * 360);
+      if (p < 0.15) {
+        // 升空
+        const k = p / 0.15;
+        ctx.fillStyle = `hsla(${h},100%,80%,0.9)`;
+        ctx.fillRect(bx - 0.5, HORIZON - (HORIZON - by) * k, 1, 2);
+        continue;
+      }
+      burst(ctx, bx, by, (p - 0.15) / 0.6, h, 30, 26);
     }
-    const k = (p - 0.15) / 0.6;
-    const fade = 1 - k;
-    const count = 30;
-    for (let j = 0; j < count; j++) {
-      const a = (j / count) * Math.PI * 2 + r() * 0.1;
-      const dist = 26 * Math.sqrt(k) * (0.85 + 0.3 * ((j * 37) % 7) / 7);
-      const x = bx + Math.cos(a) * dist;
-      const y = by + Math.sin(a) * dist + k * k * 14;
-      ctx.fillStyle = `hsla(${(h + (j % 3) * 20) % 360},100%,${65 + fade * 20}%,${fade})`;
-      ctx.fillRect(x - 0.7, y - 0.7, 1.4, 1.4);
-    }
-    const flash = ctx.createRadialGradient(bx, by, 0, bx, by, 30);
-    flash.addColorStop(0, `hsla(${h},100%,75%,${0.25 * fade})`);
-    flash.addColorStop(1, `hsla(${h},100%,75%,0)`);
-    ctx.fillStyle = flash;
-    ctx.fillRect(bx - 30, by - 30, 60, 60);
   }
   ctx.restore();
+}
+
+const NYE_PERIOD = 48;
+
+/** 跨年要迎接的年份（一月上旬仍顯示當年） */
+function nextYear(): number {
+  const now = new Date();
+  return now.getMonth() === 0 && now.getDate() <= 7 ? now.getFullYear() : now.getFullYear() + 1;
+}
+
+/** 一團煙火：k = 0～1 的綻放進度 */
+function burst(ctx: CanvasRenderingContext2D, bx: number, by: number, k: number, hue: number, count: number, radius: number) {
+  const fade = 1 - k;
+  for (let j = 0; j < count; j++) {
+    const a = (j / count) * Math.PI * 2;
+    const dist = radius * Math.sqrt(k) * (0.85 + (0.3 * ((j * 37) % 7)) / 7);
+    const x = bx + Math.cos(a) * dist;
+    const y = by + Math.sin(a) * dist + k * k * 14;
+    ctx.fillStyle = `hsla(${(hue + (j % 3) * 20) % 360},100%,${65 + fade * 20}%,${fade})`;
+    ctx.fillRect(x - 0.7, y - 0.7, 1.4, 1.4);
+    // 拖尾
+    const x2 = bx + Math.cos(a) * dist * 0.8;
+    const y2 = by + Math.sin(a) * dist * 0.8 + k * k * 12;
+    ctx.fillStyle = `hsla(${hue},100%,70%,${fade * 0.35})`;
+    ctx.fillRect(x2 - 0.5, y2 - 0.5, 1, 1);
+  }
+  const flash = ctx.createRadialGradient(bx, by, 0, bx, by, radius * 1.2);
+  flash.addColorStop(0, `hsla(${hue},100%,75%,${0.25 * fade})`);
+  flash.addColorStop(1, `hsla(${hue},100%,75%,0)`);
+  ctx.fillStyle = flash;
+  ctx.fillRect(bx - radius * 1.2, by - radius * 1.2, radius * 2.4, radius * 2.4);
+}
+
+/** 倒數：大樓立面亮出 10 → 1 的數字，每秒閃一下 */
+function drawCountdown(ctx: CanvasRenderingContext2D, t: number, topY: number) {
+  const n = 10 - Math.floor(t);
+  const pulse = 1 - (t % 1);
+  const cy = (HORIZON - 40 + topY) / 2 + 4;
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.font = `900 ${n === 10 ? 18 : 24}px "Segoe UI", "Noto Sans TC", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = `rgba(255,220,120,${0.6 + pulse * 0.4})`;
+  ctx.shadowBlur = 10 + pulse * 14;
+  ctx.fillStyle = `rgba(255,252,236,${0.85 + pulse * 0.15})`;
+  ctx.fillText(String(n), T101.x, cy);
+  ctx.fillText(String(n), T101.x, cy);
+  ctx.restore();
+  // 倒數時塔身其他燈光變暗（直接疊一層深色）
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = `rgba(255,230,160,${0.08 * pulse})`;
+  ctx.fillRect(T101.x - 60, topY - 30, 120, HORIZON - topY + 30);
+  ctx.restore();
+}
+
+/** 煙火大秀：每一節塔身向兩側噴出金色火花，天空接連綻放大煙火，塔上亮出年份 */
+function drawFinale(ctx: CanvasRenderingContext2D, t: number, segs: { y0: number; y1: number; wb: number; wt: number }[], topY: number) {
+  // 塔身火花（從每節的上緣往兩側噴、往下灑落）
+  const tower = segs.slice(2);
+  tower.forEach((s, i) => {
+    const start = (i % 4) * 0.25;
+    if (t < start) return;
+    const half = s.wt / 2;
+    const spawn = 0.07;
+    const life = 1.3;
+    const first = Math.max(0, Math.floor((t - start - life) / spawn));
+    const last = Math.floor((t - start) / spawn);
+    for (let k = first; k <= last; k++) {
+      const age = t - start - k * spawn;
+      if (age < 0 || age > life) continue;
+      const fade = 1 - age / life;
+      const jitter = ((k * 53 + i * 17) % 10) / 10;
+      for (const side of [-1, 1]) {
+        const x = T101.x + side * (half + age * (26 + jitter * 14));
+        const y = s.y1 + age * age * 16 + jitter * 2;
+        ctx.fillStyle = `rgba(255,${200 + Math.floor(jitter * 50)},${120 + Math.floor(fade * 100)},${fade})`;
+        ctx.fillRect(x - 0.6, y - 0.6, 1.2, 1.2);
+      }
+    }
+  });
+  // 天空的大煙火：每 0.45 秒一發
+  const every = 0.45;
+  for (let k = Math.max(0, Math.floor((t - 1.6) / every)); k <= Math.floor(t / every); k++) {
+    const age = t - k * every;
+    if (age < 0 || age > 1.6) continue;
+    const r = rng(k * 97 + 3);
+    const bx = T101.x + (r() - 0.5) * 300;
+    const by = -10 + r() * 70;
+    burst(ctx, bx, by, age / 1.6, Math.floor(r() * 360), 40, 30 + r() * 16);
+  }
+  // 年份
+  const glow = Math.min(1, t / 1.5) * (t > 12.5 ? Math.max(0, (14 - t) / 1.5) : 1);
+  if (glow > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.font = 'bold 9px "Segoe UI", "Noto Sans TC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(255,200,90,0.9)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = `rgba(255,246,210,${glow})`;
+    const cy = (HORIZON - 40 + topY) / 2 + 4;
+    ctx.fillText(String(nextYear()), T101.x, cy);
+    ctx.font = '900 12px "Segoe UI", "Noto Sans TC", sans-serif';
+    ctx.fillText('HAPPY NEW YEAR', T101.x - 96, 34);
+    ctx.font = '900 10px "Segoe UI", "Noto Sans TC", sans-serif';
+    ctx.fillText('新年快樂', T101.x - 96, 50);
+    ctx.restore();
+  }
 }
 
 // ------------------------------------------------------------------ 木柵動物園

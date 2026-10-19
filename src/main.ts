@@ -627,7 +627,10 @@ class App {
     return segmented<Settings['scene']>([
       { value: 'beach', label: t('sceneBeach') }, { value: 'lake', label: t('sceneLake') },
       { value: 'comet', label: t('sceneComet') }, { value: 'taipei', label: t('sceneTaipei') },
-      { value: 'zoo', label: t('sceneZoo') }, { value: 'random', label: t('random') },
+      { value: 'zoo', label: t('sceneZoo') }, { value: 'ntu', label: t('sceneNtu') },
+      { value: 'songshan', label: t('sceneSongshan') }, { value: 'expo', label: t('sceneExpo') },
+      { value: 'yangming', label: t('sceneYangming') }, { value: 'tamsui', label: t('sceneTamsui') },
+      { value: 'random', label: t('random') },
     ], s.scene, (v) => {
       s.scene = v;
       saveSettings(s);
