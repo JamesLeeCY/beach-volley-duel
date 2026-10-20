@@ -15,7 +15,7 @@
 - 地上按擊球＋左右＝魚躍
 - 鍵位可在「設定 → 鍵盤鍵位」重新綁定
 - Esc 選單、空白鍵暫停、Enter／空白鍵確認選單；對戰電腦與線上時兩套按鍵都能控制自己
-- 手把：D-pad／左搖桿移動、A 跳、B 或 X 擊球
+- 手把：D-pad／左搖桿移動、A 跳、B 或 X 擊球（可在設定頁改）
 - 手機（荒野亂鬥式）：畫面填滿全螢幕；左半邊任意處按下出現浮動搖桿；右下大鈕擊球（按住拖曳可瞄準扣殺方向）、旁邊小鈕跳。設定可改成固定搖桿、調大小／透明度、左右互換。iPhone 請「加入主畫面」以全螢幕遊玩
 
 ## 本機開發
@@ -26,6 +26,8 @@ npm run dev        # http://localhost:5173
 npm test           # 單元測試（決定性、物理、rollback、鍵位、角色包）
 npm run test:e2e   # Playwright E2E（首次先執行 npx playwright install chromium）
 npm run build      # 輸出到 dist/
+npm run gen:assets # 重新產生內建角色圖與圖示
+npm run gen:og     # 重新產生連結預覽圖 public/og.jpg
 ```
 
 需要 Node 20 以上。規格書建議 pnpm，本 repo 使用 npm（換成 pnpm 也可直接執行）。

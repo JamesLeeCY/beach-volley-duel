@@ -233,6 +233,13 @@ export class TouchControls {
     zone.addEventListener('lostpointercapture', end);
   }
 
+  /** 版面：full＝單人（左搖桿右按鈕）；left／right＝平板同機雙人時各佔半邊 */
+  setLayout(layout: 'full' | 'left' | 'right') {
+    this.root.classList.toggle('layout-left', layout === 'left');
+    this.root.classList.toggle('layout-right', layout === 'right');
+    this.resetStick();
+  }
+
   apply(s: Settings) {
     this.vibrate = s.vibrate;
     this.floating = s.touchStick !== 'fixed';

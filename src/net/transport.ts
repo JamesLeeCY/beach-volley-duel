@@ -15,6 +15,7 @@ interface NetTestHooks {
 const hooks: NetTestHooks = (globalThis as { __BVD_NET__?: NetTestHooks }).__BVD_NET__ ?? {};
 
 import { randomCode } from './code';
+import { recordError } from '../ui/errorlog';
 
 export { normalizeCode, randomCode } from './code';
 
@@ -140,7 +141,10 @@ export class Transport {
       if (conn === this.conn && !this.closed) this.ev.onClose();
     });
     conn.on('error', (e) => {
-      if (conn === this.conn && !this.everConnected) this.ev.onError(String(e));
+      if (conn !== this.conn) return;
+      // 連上之後的錯誤（例如訊息太大）不中斷連線，只記錄下來
+      if (!this.everConnected) this.ev.onError(String(e));
+      else recordError('net', e);
     });
   }
 

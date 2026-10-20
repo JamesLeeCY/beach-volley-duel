@@ -9,11 +9,14 @@ import { sceneThumb } from './render/thumbs';
 import { SCENES, type SceneId } from './render/scenery';
 import { audio } from './audio/audio';
 import type { MusicId } from './audio/music';
+import { TUTORIAL_STEPS, Tutorial } from './ui/tutorial';
+import { clearErrors, errorEntries, installErrorLog, issueUrl, recordError } from './ui/errorlog';
+import { STAGE_COUNT, STAGE_DIFFS, STAGE_SCENES, STAGE_TARGET, buildStages, loadBest, saveBest } from './ui/challenge';
 import {
   applyKeymaps, canBind, cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, Keyboard, KEY_ACTIONS, KEYMAP_1P, KEYMAP_2P,
   keyLabel, keymapSide, menuAction, rebind, type KeyAction, type KeyMap,
 } from './input/keyboard';
-import { readGamepad } from './input/gamepad';
+import { DEFAULT_PAD_MAP, DPAD_BUTTONS, applyPadMap, padButtonLabel, pressedButtons, readGamepad } from './input/gamepad';
 import { TouchControls, isTouchDevice } from './input/touch';
 import {
   allCharacters, displayName, getCharacter, hasCharacter, loadCharacters, statsOf, DEFAULT_CHARACTER, type CharacterPack,
@@ -53,6 +56,8 @@ class App {
   keyboard = new Keyboard();
   renderer = new Renderer($('#game'));
   touch = new TouchControls($('#app'));
+  /** 平板同機雙人時 2P 的觸控按鍵 */
+  touch2 = new TouchControls($('#app'));
   overlay = $<HTMLDivElement>('#overlay');
   hud = $<HTMLDivElement>('#hud');
   toastEl = $<HTMLDivElement>('#toast');
@@ -79,11 +84,15 @@ class App {
   private backHandler: (() => void) | null = null;
   private padPrev = [0, 0];
   scene: SceneId = 'beach';
+  tutorial: Tutorial | null = null;
+  private tutorialEl: HTMLDivElement | null = null;
+  challenge: { player: string; stages: string[]; idx: number } | null = null;
   ball: BallSkin = 'classic';
   private touchSeen = false;
   private needRefresh: ((reload?: boolean) => Promise<void>) | null = null;
 
   async init() {
+    installErrorLog();
     setLang(this.settings.lang);
     this.applySettings();
     await loadCharacters();
@@ -162,6 +171,8 @@ class App {
     $('#game').classList.toggle('smooth', s.graphics === 'smooth');
     audio.configure(s.sfx, s.bgm);
     this.touch.apply(s);
+    this.touch2.apply({ ...s, touchSwap: false });
+    applyPadMap(s.padMap);
     for (const el of document.querySelectorAll<HTMLElement>('[data-i18n]')) el.textContent = t(el.dataset.i18n as MsgKey);
     document.title = t('title') + ' — Beach Volley Duel';
   }
@@ -180,6 +191,7 @@ class App {
       this.frameBody(now);
     } catch (err) {
       this.frameErrors++;
+      recordError('frame', err);
       // 繪圖到一半出錯時，畫布可能停在 save() 之後的狀態：重設畫布
       this.renderer.recover();
       // 同樣的錯誤只記錄前幾次，避免洗版
@@ -266,7 +278,7 @@ class App {
     let in2 = 0;
     if (this.mode === 'local') {
       in1 = this.keyboard.read(KEYMAP_1P) | readGamepad(0) | this.touch.read();
-      in2 = this.keyboard.read(KEYMAP_2P) | readGamepad(1);
+      in2 = this.keyboard.read(KEYMAP_2P) | readGamepad(1) | this.touch2.read();
     } else if (this.mode === 'cpu' || this.mode === 'practice') {
       const human = this.humanInput();
       if (this.humanSide === 0) in1 = human;
@@ -277,6 +289,7 @@ class App {
     this.prev = this.state;
     this.state = step(this.state, in1, in2, this.cfg);
     this.handleEvents(this.state.events, false);
+    if (this.tutorial && this.tutorial.update(this.state, this.state.events)) this.onTutorialStep();
     if (this.state.phase === Phase.Over && this.state.phaseTimer === 0 && !this.resultShown) {
       if (this.mode === 'demo') this.startDemo();
       else this.showResult(this.state.winner);
@@ -336,12 +349,16 @@ class App {
     this.setInMatch(false);
   }
 
-  private startLocalMatch(mode: 'cpu' | 'local' | 'practice') {
+  private startLocalMatch(mode: 'cpu' | 'local' | 'practice', opts: { target?: number; scene?: SceneId } = {}) {
     this.mode = mode;
     this.rollLook();
+    if (opts.scene) {
+      this.scene = opts.scene;
+      audio.setMusic(SCENE_MUSIC[this.scene] ?? 'bright');
+    }
     const seed = (Math.random() * 2 ** 31) | 0;
     this.cfg = defaultConfig({
-      targetScore: this.settings.targetScore,
+      targetScore: opts.target ?? this.settings.targetScore,
       practice: mode === 'practice',
       balance: this.settings.balance,
       stats: [statsOf(this.chars[0]), statsOf(this.chars[1])],
@@ -355,7 +372,7 @@ class App {
     this.setInMatch(true);
     this.clearScreen();
     this.renderHud();
-    if (mode === 'practice') this.toast(t('practiceHint'), [], 3000);
+    if (mode === 'practice' && !this.tutorial) this.toast(t('practiceHint'), [], 3000);
   }
 
   private isLocalMatch() {
@@ -364,6 +381,11 @@ class App {
 
   private setInMatch(v: boolean) {
     document.body.classList.toggle('in-match', v);
+    // 平板（短邊 ≥ 600px）同機雙人：左右各一組觸控按鍵
+    const tablet2p = v && this.mode === 'local' && isTouchDevice() && Math.min(innerWidth, innerHeight) >= 600;
+    this.touch.setLayout(tablet2p ? 'left' : 'full');
+    this.touch2.setLayout('right');
+    this.touch2.setVisible(tablet2p);
     this.touch.setVisible(v && isTouchDevice());
     if (v && isTouchDevice()) this.enterFullscreen();
     if (!v) this.hud.replaceChildren();
@@ -429,7 +451,39 @@ class App {
     }
   }
 
+  /** 設定頁等待「按下要綁定的手把按鈕」 */
+  private padCapture: { action: 'jump' | 'hit'; prev: Set<number>; back: () => void; since: number } | null = null;
+
+  private pollPadCapture(): boolean {
+    const c = this.padCapture;
+    if (!c) return false;
+    const now = pressedButtons();
+    // 8 秒沒有按就取消
+    if (performance.now() - c.since > 8000) {
+      this.padCapture = null;
+      this.showSettings(c.back);
+      return true;
+    }
+    for (const b of now) {
+      if (c.prev.has(b) || DPAD_BUTTONS.has(b)) continue;
+      const s = this.settings;
+      const other = c.action === 'jump' ? 'hit' : 'jump';
+      s.padMap[c.action] = [b];
+      s.padMap[other] = s.padMap[other].filter((x) => x !== b);
+      if (!s.padMap[other].length) s.padMap[other] = [...DEFAULT_PAD_MAP[other]].filter((x) => x !== b);
+      saveSettings(s);
+      this.applySettings();
+      this.padCapture = null;
+      this.padPrev = [0xff, 0xff]; // 避免剛綁定的按鍵同時觸發選單
+      this.showSettings(c.back);
+      return true;
+    }
+    c.prev = new Set([...c.prev].filter((b) => now.has(b)));
+    return true;
+  }
+
   private pollGamepadMenu() {
+    if (this.pollPadCapture()) return;
     if (!this.screenName) return;
     for (let i = 0; i < 2; i++) {
       const v = readGamepad(i);
@@ -497,7 +551,9 @@ class App {
         button(t('vsCpu'), () => this.showCpuSetup(), 'primary'),
         smallTouch ? null : button(t('local2p'), () => this.showCharSelect('local')),
         button(t('online'), () => this.showOnlineMenu()),
+        button(t('challenge'), () => this.showCharSelect('challenge')),
         button(t('practice'), () => this.showCharSelect('practice')),
+        button(t('tutorial'), () => this.startTutorial(), 'secondary'),
         h('div', { class: 'menu row' },
           button(t('settings'), () => this.showSettings(() => this.showModes()), 'secondary small'),
           button(t('help'), () => this.showHelp(), 'secondary small'),
@@ -530,7 +586,7 @@ class App {
         segmented<0 | 1>([{ value: 0, label: t('left') }, { value: 1, label: t('right') }], this.humanSide, (v) => (this.humanSide = v))),
       h('div', { class: 'opt-row' }, h('label', {}, t('difficulty')),
         segmented<Difficulty>([
-          { value: 'easy', label: t('easy') }, { value: 'normal', label: t('normal') }, { value: 'hard', label: t('hard') },
+          { value: 'beginner', label: t('beginner') }, { value: 'easy', label: t('easy') }, { value: 'normal', label: t('normal') }, { value: 'hard', label: t('hard') },
         ], this.difficulty, (v) => (this.difficulty = v))),
       h('div', { class: 'menu row' },
         button(t('back'), () => this.showModes(), 'secondary'),
@@ -542,7 +598,7 @@ class App {
   }
 
   /** 角色選擇（本機模式） */
-  showCharSelect(mode: 'cpu' | 'local' | 'practice') {
+  showCharSelect(mode: 'cpu' | 'local' | 'practice' | 'challenge') {
     const list = allCharacters();
     const idxOf = (id: string) => Math.max(0, list.findIndex((c) => c.id === id));
     const slots: [CharSlot, CharSlot] = [
@@ -554,16 +610,18 @@ class App {
       slots[1 - this.humanSide].ready = true;
       slots[1 - this.humanSide].idx = (Math.random() * list.length) | 0;
     }
-    if (mode === 'practice') {
+    if (mode === 'practice' || mode === 'challenge') {
       slots[1].ctrl = 'cpu';
       slots[1].ready = true;
       this.humanSide = 0;
     }
     const finish = () => {
       this.chars = [list[slots[0].idx].id, list[slots[1].idx].id];
-      this.startLocalMatch(mode);
+      if (mode === 'challenge') this.startChallenge(this.chars[0]);
+      else this.startLocalMatch(mode);
     };
-    const panels = this.buildCharPanels(list, slots, mode === 'practice' ? [true, false] : [true, true], (side, action) => {
+    const single = mode === 'practice' || mode === 'challenge';
+    const panels = this.buildCharPanels(list, slots, single ? [true, false] : [true, true], (side, action) => {
       const s = slots[side];
       if (action === 'ok') {
         if (s.ready && s.ctrl === 'human') s.ready = false;
@@ -821,6 +879,33 @@ class App {
       row(t('vibrate'), onOff('vibrate')),
       row(t('selfLeft'), onOff('selfLeft')),
       row(t('showFps'), onOff('showFps')),
+      row(t('padKeys'), h('div', { class: 'seg' },
+        ...(['jump', 'hit'] as const).map((action) => button(
+          this.padCapture?.action === action
+            ? `${t(action === 'jump' ? 'padJump' : 'padHit')}：${t('padPress')}`
+            : `${t(action === 'jump' ? 'padJump' : 'padHit')}：${s.padMap[action].map(padButtonLabel).join(' / ')}`,
+          () => {
+            this.padCapture = { action, prev: pressedButtons(), back, since: performance.now() };
+            this.showSettings(back);
+          },
+          'small',
+        )),
+        button(t('padReset'), () => {
+          s.padMap = { jump: [...DEFAULT_PAD_MAP.jump], hit: [...DEFAULT_PAD_MAP.hit] };
+          save();
+          this.showSettings(back);
+        }, 'small secondary'),
+      )),
+      row(t('errorLog'), h('div', { class: 'seg' },
+        h('span', { class: 'sub', style: 'align-self:center' }, t('errorCount', { n: errorEntries().length })),
+        button(t('reportIssue'), () => {
+          window.open(issueUrl({ scene: this.scene, mode: this.mode, speed: this.settings.speed }), '_blank', 'noopener');
+        }, 'small'),
+        button(t('clearLog'), () => {
+          clearErrors();
+          this.showSettings(back);
+        }, 'small secondary'),
+      )),
       h('h3', {}, t('controls')),
       this.keyBindingRows(),
       h('h3', {}, t('packs')),
@@ -961,6 +1046,8 @@ class App {
 
   private quitToModes() {
     this.paused = false;
+    this.endTutorial();
+    this.challenge = null;
     if (this.online) {
       this.online.close();
       this.online = null;
@@ -971,6 +1058,10 @@ class App {
 
   private showResult(winner: number) {
     this.resultShown = true;
+    if (this.challenge && this.mode === 'cpu') {
+      this.showStageResult(winner === this.humanSide);
+      return;
+    }
     const winnerName = displayName(getCharacter(this.chars[winner]), getLang());
     let title = t('winner', { name: winnerName });
     if (this.mode === 'cpu') title = winner === this.humanSide ? t('youWin') : t('youLose');
@@ -988,7 +1079,159 @@ class App {
     const el = h('div', { class: 'screen' },
       h('h2', {}, title),
       h('p', { class: 'code', style: 'letter-spacing:2px' }, `${this.state.score[0]} - ${this.state.score[1]}`),
-      h('div', { class: 'menu' }, againBtn, button(t('toTitle'), () => this.quitToModes(), 'secondary')),
+      h('div', { class: 'menu' }, againBtn, this.shareButton(title), button(t('toTitle'), () => this.quitToModes(), 'secondary')),
+    );
+    this.show('result', el, () => this.quitToModes());
+  }
+
+  /** 結算畫面的「分享戰績」：產生 1200×630 的戰績圖，手機用系統分享、電腦下載 */
+  private shareButton(result: string) {
+    const btn = button(t('shareResult'), async () => {
+      btn.disabled = true;
+      try {
+        const { shareCard } = await import('./ui/sharecard');
+        const players = this.chars.map((id) => {
+          const pack = getCharacter(id);
+          return { name: displayName(pack, getLang()), portrait: pack.portrait, color: pack.manifest.themeColor };
+        });
+        const outcome = await shareCard({
+          title: t('title'),
+          result,
+          score: [this.state.score[0], this.state.score[1]],
+          players,
+          sceneId: this.scene,
+          sceneName: t(App.SCENE_LABELS[this.scene]),
+          url: `${location.origin}${location.pathname}`,
+        });
+        if (outcome === 'downloaded') this.toast(t('imageSaved'), [], 2500);
+      } catch (err) {
+        recordError('error', err);
+      } finally {
+        btn.disabled = false;
+      }
+    }, 'secondary');
+    return btn;
+  }
+
+  // ---------------------------------------------------------------- 新手教學
+  private startTutorial() {
+    this.challenge = null;
+    if (!this.chars[0]) this.chars[0] = DEFAULT_CHARACTER;
+    this.humanSide = 0;
+    this.tutorial = null;
+    this.startLocalMatch('practice', { scene: 'beach' });
+    this.hideToast();
+    this.tutorial = new Tutorial(this.state);
+    this.tutorialEl?.remove();
+    this.tutorialEl = h('div', { class: 'tutorial' });
+    $('#app').append(this.tutorialEl);
+    this.renderTutorial();
+  }
+
+  private tutorialText(i: number) {
+    const step = TUTORIAL_STEPS[i];
+    const m = KEYMAP_1P;
+    const k = (a: KeyAction) => m[a].map(keyLabel).join('/') || '—';
+    const vars = { l: k('left'), r: k('right'), u: k('up'), d: k('down'), h: k('hit') };
+    return t(isTouchDevice() ? step.touch : step.kb, vars);
+  }
+
+  private renderTutorial() {
+    const tut = this.tutorial;
+    if (!tut || !this.tutorialEl) return;
+    const items = TUTORIAL_STEPS.map((_, i) =>
+      h('li', { class: i < tut.step ? 'done' : i === tut.step ? 'now' : '' }, (i < tut.step ? '✔ ' : `${i + 1}. `) + this.tutorialText(i)),
+    );
+    this.tutorialEl.replaceChildren(
+      h('div', { class: 'tut-head' }, h('b', {}, `${t('tutTitle')} ${Math.min(tut.step + 1, TUTORIAL_STEPS.length)}/${TUTORIAL_STEPS.length}`),
+        button(t('tutSkip'), () => this.quitToModes(), 'small secondary')),
+      h('ol', {}, ...items),
+    );
+  }
+
+  private onTutorialStep() {
+    audio.play('score');
+    this.renderTutorial();
+    if (!this.tutorial?.finished) return;
+    this.paused = true;
+    const el = h('div', { class: 'screen' },
+      h('h2', {}, t('tutDone')),
+      h('p', {}, t('tutDoneText')),
+      h('div', { class: 'menu' },
+        button(t('vsCpu'), () => {
+          this.endTutorial();
+          this.showCpuSetup();
+        }, 'primary'),
+        button(t('toTitle'), () => this.quitToModes(), 'secondary'),
+      ),
+    );
+    this.show('tutorialDone', el, () => this.quitToModes());
+  }
+
+  private endTutorial() {
+    this.tutorial = null;
+    this.tutorialEl?.remove();
+    this.tutorialEl = null;
+  }
+
+  // ---------------------------------------------------------------- 闖關挑戰
+  private startChallenge(player: string) {
+    this.endTutorial();
+    this.challenge = { player, stages: buildStages(player, allCharacters().map((c) => c.id)), idx: 0 };
+    this.showStageIntro();
+  }
+
+  private levelName(d: Difficulty) {
+    return t(d);
+  }
+
+  private showStageIntro() {
+    const c = this.challenge;
+    if (!c) return;
+    this.paused = false;
+    if (this.mode !== 'demo') this.startDemo();
+    const opp = getCharacter(c.stages[c.idx]);
+    const portrait = opp.portrait ? h('img', { src: opp.portrait, class: 'stage-portrait', alt: '' }) : null;
+    const el = h('div', { class: 'screen' },
+      h('h2', {}, t('stageN', { n: c.idx + 1, total: STAGE_COUNT })),
+      portrait,
+      h('p', { class: 'sub' }, t('stageVs', { name: displayName(opp, getLang()), level: this.levelName(STAGE_DIFFS[c.idx]) })),
+      h('p', {}, t('challengeBest', { n: loadBest(), total: STAGE_COUNT })),
+      h('div', { class: 'menu' },
+        button(t('start'), () => this.startStage(), 'primary'),
+        button(t('giveUp'), () => this.quitToModes(), 'secondary'),
+      ),
+    );
+    this.show('stageIntro', el, () => this.quitToModes());
+  }
+
+  private startStage() {
+    const c = this.challenge;
+    if (!c) return;
+    this.chars = [c.player, c.stages[c.idx]];
+    this.humanSide = 0;
+    this.difficulty = STAGE_DIFFS[c.idx];
+    this.startLocalMatch('cpu', { target: STAGE_TARGET, scene: STAGE_SCENES[c.idx] });
+  }
+
+  private showStageResult(won: boolean) {
+    const c = this.challenge!;
+    if (won) {
+      c.idx++;
+      saveBest(c.idx);
+      audio.play('win');
+    }
+    const cleared = won && c.idx >= STAGE_COUNT;
+    const el = h('div', { class: 'screen' },
+      h('h2', {}, cleared ? t('challengeClear') : won ? t('stageWin') : t('stageLose')),
+      h('p', { class: 'code', style: 'letter-spacing:2px' }, `${this.state.score[0]} - ${this.state.score[1]}`),
+      cleared ? h('p', { class: 'sub' }, t('challengeClearText')) : null,
+      h('p', {}, t('challengeBest', { n: loadBest(), total: STAGE_COUNT })),
+      h('div', { class: 'menu' },
+        cleared ? null : button(won ? t('nextStage') : t('tryAgain'), () => (won ? this.showStageIntro() : this.startStage()), 'primary'),
+        this.shareButton(cleared ? t('challengeClear') : won ? t('stageWin') : t('stageLose')),
+        button(t('toTitle'), () => this.quitToModes(), cleared ? 'primary' : 'secondary'),
+      ),
     );
     this.show('result', el, () => this.quitToModes());
   }
@@ -1103,6 +1346,10 @@ class App {
           this.showResult(o.localSide);
         },
         onLeft: () => this.onOpponentLeft(),
+        onPackReceived: () => {
+          // 重建選角畫面，讓對方的角色出現在清單裡
+          if (this.screenName === 'onlineChar') this.showOnlineCharSelect();
+        },
         onError: (msg) => this.onlineError(msg),
       },
       () => ({ speed: this.settings.speed, targetScore: this.settings.targetScore, balance: this.settings.balance }),
@@ -1159,6 +1406,7 @@ class App {
   }
 
   private onlineError(msg: string) {
+    recordError('net', `online: ${msg}`);
     const map: Record<string, string> = {
       version: t('versionMismatch'),
       'room-not-found': `${t('roomCode')} ✕`,

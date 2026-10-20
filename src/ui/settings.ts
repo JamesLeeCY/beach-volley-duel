@@ -2,6 +2,7 @@ import type { Speed } from '../engine/constants';
 import { detectLang, type Lang } from '../i18n';
 import type { SceneId } from '../render/scenery';
 import type { BallSkin } from '../render/renderer';
+import { DEFAULT_PAD_MAP, sanitizePadMap, type PadMap } from '../input/gamepad';
 import { cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, LEGACY_KEYMAPS, sanitizeKeymap, type KeyMap } from '../input/keyboard';
 
 export interface Settings {
@@ -29,6 +30,8 @@ export interface Settings {
   ball: BallSkin | 'random';
   /** 顯示效能資訊（畫面 FPS、每幀耗時、邏輯幀率） */
   showFps: boolean;
+  /** 手把按鍵對應 */
+  padMap: PadMap;
 }
 
 export const KEYS_VERSION = 2;
@@ -55,6 +58,7 @@ export function defaultSettings(): Settings {
     scene: 'beach',
     ball: 'classic',
     showFps: false,
+    padMap: { jump: [...DEFAULT_PAD_MAP.jump], hit: [...DEFAULT_PAD_MAP.hit] },
   };
 }
 
@@ -80,7 +84,7 @@ export function loadSettings(): Settings {
       const keys: [KeyMap, KeyMap] = raw2
         ? migrateKeys([sanitizeKeymap(raw2[0], fb[0]), sanitizeKeymap(raw2[1], fb[1])], version)
         : d.keys;
-      return { ...d, ...saved, keys, keysVersion: KEYS_VERSION };
+      return { ...d, ...saved, keys, keysVersion: KEYS_VERSION, padMap: sanitizePadMap(saved?.padMap) };
     }
   } catch {
     // 無痕模式等情況：使用預設值

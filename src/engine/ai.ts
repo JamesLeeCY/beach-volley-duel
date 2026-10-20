@@ -6,7 +6,7 @@ import { spikeVelocity } from './physics';
 import { Rng } from './rng';
 import { IN_DOWN, IN_HIT, IN_LEFT, IN_RIGHT, IN_UP, Phase, PState, type GameState, type InputFrame } from './types';
 
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'beginner' | 'easy' | 'normal' | 'hard';
 
 interface Profile {
   reaction: number; // 幾幀重新規劃一次
@@ -19,6 +19,8 @@ interface Profile {
 }
 
 const PROFILES: Record<Difficulty, Profile> = {
+  // 入門：反應慢、常判斷錯、幾乎不扣殺，適合小朋友或第一次玩
+  beginner: { reaction: 14, noise: 40, spikeRate: 8, missRate: 45, deadzone: 14, aggression: 0, moveRate: 55 },
   easy: { reaction: 10, noise: 28, spikeRate: 30, missRate: 30, deadzone: 10, aggression: 10, moveRate: 70 },
   normal: { reaction: 4, noise: 12, spikeRate: 70, missRate: 10, deadzone: 5, aggression: 50, moveRate: 92 },
   hard: { reaction: 1, noise: 4, spikeRate: 95, missRate: 2, deadzone: 3, aggression: 85, moveRate: 100 },

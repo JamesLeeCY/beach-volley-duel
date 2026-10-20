@@ -11,12 +11,13 @@ async function phone(browser: import('@playwright/test').Browser) {
     a.chars = ['momo', 'kit'];
     a.startLocalMatch('practice');
   });
-  await expect(page.locator('.touch-controls')).toHaveClass(/visible/);
+  await expect(page.locator('.touch-controls').first()).toHaveClass(/visible/);
   return { ctx, page };
 }
 
 function center(page: Page, sel: string) {
-  return page.locator(sel).evaluate((el) => {
+  // 頁面上有兩組觸控按鍵（第二組是平板同機雙人的 2P，平常隱藏），取第一組
+  return page.locator(sel).first().evaluate((el) => {
     const r = el.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   });

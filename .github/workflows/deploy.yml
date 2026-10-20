@@ -25,8 +25,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      # 端對端測試：兩個瀏覽器連線對戰、斷線重連、手機觸控、設定（本機 PeerJS 信令伺服器）
-      - run: npx playwright install --with-deps chromium
+      # 端對端測試（Chromium＋WebKit）：連線對戰、斷線重連、手機觸控、設定、跨瀏覽器決定性（本機 PeerJS 信令伺服器）
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

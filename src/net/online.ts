@@ -4,6 +4,22 @@ import { createState, defaultConfig, deserializeState, serializeState } from '..
 import type { GameEvent, GameState, InputFrame, MatchConfig, Stats } from '../engine/types';
 import { RollbackSession, decodePacket, encodePacket } from './rollback';
 import { Transport, type NetMessage } from './transport';
+import { recordError } from '../ui/errorlog';
+import { getCharacter, hasCharacter, loadPack, registerPack } from '../characters/registry';
+
+/** 角色包分段傳送：PeerJS 的 JSON 通道單則訊息上限約 16 KB，所以每段 12,000 字元；總共最多 1.5 MB */
+const PACK_CHUNK = 12_000;
+const PACK_MAX = 1_500_000;
+
+async function toDataUrl(src: string): Promise<string> {
+  const blob = await (await fetch(src)).blob();
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
 
 declare const __BUILD_VERSION__: string;
 export const BUILD_VERSION = typeof __BUILD_VERSION__ === 'string' ? __BUILD_VERSION__ : 'dev';
@@ -35,6 +51,8 @@ export interface OnlineCallbacks {
   onResume(): void;
   onForfeit(): void;
   onLeft(): void;
+  /** 收到對方傳來的角色包（自己沒有的匯入角色） */
+  onPackReceived(id: string): void;
   onError(msg: string): void;
 }
 
@@ -65,6 +83,8 @@ export class OnlineMatch {
   resumes = 0;
   private reconnectTimer: number | null = null;
   private cfg: MatchConfig | null = null;
+  private packRequested = new Set<string>();
+  private packParts = new Map<string, string[]>();
   desyncs = 0;
   ended = false;
 
@@ -214,6 +234,7 @@ export class OnlineMatch {
 
   private onDesync(frame: number) {
     this.desyncs++;
+    recordError('desync', `desync at frame ${frame}`);
     console.warn('[net] desync at frame', frame, {
       local: [...(this.session?.localInputs ?? [])].slice(-60),
       remote: [...(this.session?.remoteInputs ?? [])].slice(-60),
@@ -252,6 +273,11 @@ export class OnlineMatch {
       case 'char':
         this.remoteChar = String(m.id);
         this.remoteReady = !!m.ready;
+        // 對方選了我沒有的角色（匯入的角色包）：請對方把圖傳過來
+        if (!hasCharacter(this.remoteChar) && !this.packRequested.has(this.remoteChar)) {
+          this.packRequested.add(this.remoteChar);
+          this.transport.send({ t: 'packReq', id: this.remoteChar });
+        }
         this.cb.onRemoteChar(this.remoteChar, this.remoteReady);
         this.maybeStart();
         break;
@@ -270,6 +296,12 @@ export class OnlineMatch {
         else if (mine !== h) this.onDesync(f);
         break;
       }
+      case 'packReq':
+        void this.sendPack(String(m.id));
+        break;
+      case 'pack':
+        void this.receivePackPart(String(m.id), Number(m.i), Number(m.n), String(m.d));
+        break;
       case 'resume':
         if (!this.isHost && this.session) this.restartFrom(deserializeState(String(m.s)));
         break;
@@ -338,6 +370,40 @@ export class OnlineMatch {
     }
     this.transport.sendInput(encodePacket(s.packet()));
     return advanced;
+  }
+
+  /** 把自己的角色包（manifest＋精靈圖＋頭像）分段傳給對方 */
+  private async sendPack(id: string) {
+    if (!hasCharacter(id)) return;
+    const pack = getCharacter(id);
+    try {
+      const sprite = pack.sprite ? await toDataUrl(pack.sprite.src) : '';
+      const portrait = pack.portrait ? await toDataUrl(pack.portrait) : '';
+      const payload = JSON.stringify({ manifest: pack.manifest, sprite, portrait });
+      if (payload.length > PACK_MAX) return; // 太大就不傳，對方以預設外觀顯示
+      const n = Math.ceil(payload.length / PACK_CHUNK);
+      for (let i = 0; i < n; i++) this.transport.send({ t: 'pack', id, i, n, d: payload.slice(i * PACK_CHUNK, (i + 1) * PACK_CHUNK) });
+    } catch (err) {
+      recordError('net', err);
+    }
+  }
+
+  private async receivePackPart(id: string, i: number, n: number, d: string) {
+    if (!this.packRequested.has(id) || n * PACK_CHUNK > PACK_MAX + PACK_CHUNK || i < 0 || i >= n) return;
+    const parts = this.packParts.get(id) ?? new Array<string>(n).fill('');
+    parts[i] = d;
+    this.packParts.set(id, parts);
+    if (parts.some((p) => !p)) return;
+    this.packParts.delete(id);
+    try {
+      const { manifest, sprite, portrait } = JSON.parse(parts.join('')) as { manifest: { id: string; sprite: string; portrait?: string }; sprite: string; portrait: string };
+      if (manifest.id !== id) return;
+      const pack = await loadPack((path) => (path === manifest.sprite ? sprite : path === manifest.portrait ? portrait : ''), manifest);
+      // 只放在記憶體裡，這次連線用；不會存到對方的裝置
+      if (pack && registerPack(pack)) this.cb.onPackReceived(id);
+    } catch (err) {
+      recordError('net', err);
+    }
   }
 
   get state(): GameState | null {

@@ -929,3 +929,126 @@ input.code-input {
 .perf.bad {
   color: #ffb36b;
 }
+
+/* 新手教學面板 */
+.tutorial {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 460px);
+  z-index: 6;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(12, 28, 52, 0.82);
+  border: 2px solid var(--panel-border);
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.tutorial .tut-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+}
+
+.tutorial ol {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.tutorial li {
+  display: none;
+  padding: 2px 0;
+  color: var(--muted);
+}
+
+/* 只顯示做完的最後一步與目前這一步，避免擋住畫面 */
+.tutorial li.now {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tutorial li.done:has(+ li.now) {
+  display: block;
+  color: var(--ok);
+}
+
+.stage-portrait {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  display: block;
+  margin: 4px auto;
+}
+
+@media (max-height: 420px) {
+  .tutorial {
+    top: calc(env(safe-area-inset-top) + 30px);
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+  .tutorial li.now {
+    font-size: 13px;
+  }
+  .stage-portrait {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* 平板同機雙人：1P 用左半邊（搖桿在最左、按鈕靠中間），2P 用右半邊（左右對稱） */
+.touch-controls.layout-left .touch-zone {
+  left: 0;
+  right: auto;
+  width: 25%;
+}
+
+.touch-controls.layout-left .touch-action-zone {
+  left: 25%;
+  right: auto;
+  width: 25%;
+}
+
+.touch-controls.layout-left .stick-base {
+  left: var(--edge-l);
+  right: auto;
+}
+
+.touch-controls.layout-left .touch-actions {
+  left: auto;
+  right: calc(50% + 16px);
+  transform: none;
+}
+
+.touch-controls.layout-right .touch-zone {
+  left: auto;
+  right: 0;
+  width: 25%;
+}
+
+.touch-controls.layout-right .touch-action-zone {
+  left: auto;
+  right: 25%;
+  width: 25%;
+}
+
+.touch-controls.layout-right .stick-base {
+  left: auto;
+  right: var(--edge-r);
+}
+
+.touch-controls.layout-right .touch-actions {
+  right: auto;
+  left: calc(50% + 16px);
+  transform: scaleX(-1);
+}
+
+.touch-controls.layout-right .btn-icon {
+  transform: scaleX(-1);
+}

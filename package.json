@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "gen:assets": "node scripts/gen-assets.mjs",
+    "gen:og": "node scripts/gen-og.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

@@ -35,3 +35,21 @@ export function sceneThumb(id: SceneId): Promise<string> {
   }
   return p;
 }
+
+/** 畫一張任意尺寸的場景圖（分享卡片用）；cropY = 0～1，決定裁切時偏上或偏下 */
+export async function sceneImage(id: SceneId, width: number, height: number, cropY = 0.6): Promise<HTMLCanvasElement> {
+  if (LANDMARK.has(id)) await loadLandmarks();
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  const g = c.getContext('2d')!;
+  const k = width / FIELD_W;
+  const fullH = FIELD_H * k;
+  const dy = Math.min(0, -(fullH - height) * cropY);
+  g.setTransform(k, 0, 0, k, 0, dy);
+  const scenery = new Scenery();
+  scenery.setTheme(id);
+  scenery.draw(g, 30000, k, 0, 0, FIELD_W, FIELD_H);
+  scenery.drawOverlay(g, 30000, 0, 0, FIELD_W, FIELD_H);
+  return c;
+}
