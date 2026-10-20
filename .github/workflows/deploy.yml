@@ -1,7 +1,11 @@
 name: Deploy to GitHub Pages
 
+# 推到 main：測試 → 建置 → 部署。
+# 開 Pull Request（目標是 main）：只跑測試與建置，不部署；結果會顯示在 PR 頁面上。
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -10,12 +14,14 @@ permissions:
   pages: write
   id-token: write
 
+# 同一個 PR 有新的 commit 時，取消舊的檢查；部署則同一時間只跑一個
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'pages' }}
   cancel-in-progress: true
 
 jobs:
   build:
+    name: Test & build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,11 +43,13 @@ jobs:
           path: test-results
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
