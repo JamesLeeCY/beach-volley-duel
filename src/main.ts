@@ -175,6 +175,7 @@ class App {
   /** 每個畫面幀：先排下一幀，再更新與繪圖；任何一幀出錯都只跳過那一幀，遊戲不會停住 */
   private frame(now: number) {
     requestAnimationFrame((t1) => this.frame(t1));
+    const t0 = performance.now();
     try {
       this.frameBody(now);
     } catch (err) {
@@ -184,9 +185,44 @@ class App {
       // 同樣的錯誤只記錄前幾次，避免洗版
       if (this.frameErrors <= 3) console.error('[frame] 已略過出錯的一幀', err);
     }
+    this.updatePerf(now, performance.now() - t0, this.lastTicks);
   }
 
   private frameErrors = 0;
+  private lastTicks = 0;
+
+  // ---------------------------------------------------------------- 效能顯示
+  private perfEl: HTMLDivElement | null = null;
+  private perf = { frames: 0, ticks: 0, work: 0, worst: 0, since: 0 };
+
+  /** 每 0.5 秒更新一次：畫面 FPS、平均／最差每幀耗時、邏輯幀率、解析度 */
+  private updatePerf(now: number, workMs: number, ticks: number) {
+    if (!this.settings.showFps) {
+      if (this.perfEl) this.perfEl.style.display = 'none';
+      return;
+    }
+    if (!this.perfEl) {
+      this.perfEl = h('div', { class: 'perf' });
+      $('#app').append(this.perfEl);
+    }
+    this.perfEl.style.display = '';
+    const p = this.perf;
+    if (!p.since) p.since = now;
+    p.frames++;
+    p.ticks += ticks;
+    p.work += workMs;
+    p.worst = Math.max(p.worst, workMs);
+    const span = now - p.since;
+    if (span < 500) return;
+    const fps = (p.frames * 1000) / span;
+    const tps = (p.ticks * 1000) / span;
+    const c = this.renderer.canvas;
+    this.perfEl.textContent =
+      `${fps.toFixed(0)} FPS · ${(p.work / p.frames).toFixed(1)} ms (max ${p.worst.toFixed(1)}) · ` +
+      `${tps.toFixed(0)} tick/s · ${c.width}×${c.height}`;
+    this.perfEl.classList.toggle('bad', fps < 50 || p.worst > 12);
+    this.perf = { frames: 0, ticks: 0, work: 0, worst: 0, since: now };
+  }
 
   private frameBody(now: number) {
     const dt = Math.min(250, now - this.last);
@@ -202,6 +238,7 @@ class App {
       steps++;
     }
     if (steps >= 8) this.acc = 0;
+    this.lastTicks = steps;
     const view = {
       mirror: this.mode === 'online' && this.online?.localSide === 1 && this.settings.selfLeft,
       chars: [getCharacter(this.chars[0]), getCharacter(this.chars[1])] as [CharacterPack, CharacterPack],
@@ -752,7 +789,7 @@ class App {
       this.applySettings();
     };
     const row = (label: string, ctrl: HTMLElement) => h('div', { class: 'opt-row' }, h('label', {}, label), ctrl);
-    const onOff = (k: 'bgm' | 'balance' | 'touchSwap' | 'vibrate' | 'selfLeft') =>
+    const onOff = (k: 'bgm' | 'balance' | 'touchSwap' | 'vibrate' | 'selfLeft' | 'showFps') =>
       segmented<boolean>([{ value: true, label: t('on') }, { value: false, label: t('off') }], s[k], (v) => {
         s[k] = v;
         save();
@@ -783,6 +820,7 @@ class App {
       row(t('touchSwap'), onOff('touchSwap')),
       row(t('vibrate'), onOff('vibrate')),
       row(t('selfLeft'), onOff('selfLeft')),
+      row(t('showFps'), onOff('showFps')),
       h('h3', {}, t('controls')),
       this.keyBindingRows(),
       h('h3', {}, t('packs')),

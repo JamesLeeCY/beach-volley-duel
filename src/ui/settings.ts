@@ -27,6 +27,8 @@ export interface Settings {
   scene: SceneId | 'random';
   /** 排球配色；random = 每場隨機 */
   ball: BallSkin | 'random';
+  /** 顯示效能資訊（畫面 FPS、每幀耗時、邏輯幀率） */
+  showFps: boolean;
 }
 
 export const KEYS_VERSION = 2;
@@ -52,6 +54,7 @@ export function defaultSettings(): Settings {
     keysVersion: KEYS_VERSION,
     scene: 'beach',
     ball: 'classic',
+    showFps: false,
   };
 }
 

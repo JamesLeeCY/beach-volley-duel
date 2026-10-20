@@ -909,3 +909,23 @@ input.code-input {
     margin: 2px 0;
   }
 }
+
+/* 效能顯示 */
+.perf {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 4px);
+  white-space: nowrap;
+  z-index: 25;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #9ff59f;
+  font: 600 11px ui-monospace, Consolas, monospace;
+  pointer-events: none;
+}
+
+.perf.bad {
+  color: #ffb36b;
+}
