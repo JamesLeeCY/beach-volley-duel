@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - run: npm test
       # 端對端測試（Chromium＋WebKit）：連線對戰、斷線重連、手機觸控、設定、跨瀏覽器決定性（本機 PeerJS 信令伺服器）
+      # 執行環境內建的 Microsoft 套件來源偶爾會 403，導致 apt 更新失敗；遊戲用不到它，先移除
+      - run: sudo rm -f /etc/apt/sources.list.d/*microsoft* || true
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
