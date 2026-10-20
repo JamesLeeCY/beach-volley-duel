@@ -14,7 +14,7 @@ try {
   const dataUrl = await page.evaluate(async () => {
     const m = await import('/src/ui/sharecard.ts');
     const c = await m.renderShareCard({
-      title: '沙灘排球對決 Beach Volley Duel',
+      title: '台灣金牌球 Taiwan Gold Volley',
       result: '',
       score: [0, 0],
       players: [

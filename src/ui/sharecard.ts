@@ -114,7 +114,7 @@ export async function shareCard(info: ShareInfo): Promise<'shared' | 'downloaded
   const canvas = await renderShareCard(info);
   const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
   if (!blob) return 'cancelled';
-  const file = new File([blob], 'beach-volley-duel.png', { type: 'image/png' });
+  const file = new File([blob], 'taiwan-gold-volley.png', { type: 'image/png' });
   const text = `${info.players[0].name} ${info.score[0]} : ${info.score[1]} ${info.players[1].name}｜${info.result}`;
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   if (nav.share && nav.canShare?.({ files: [file] })) {
@@ -127,7 +127,7 @@ export async function shareCard(info: ShareInfo): Promise<'shared' | 'downloaded
   }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'beach-volley-duel.png';
+  a.download = 'taiwan-gold-volley.png';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   return 'downloaded';

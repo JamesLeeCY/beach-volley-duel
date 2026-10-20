@@ -11,9 +11,9 @@ export default defineConfig({
       includeAssets: ['icons/*.png', 'characters/**/*'],
       workbox: { globPatterns: ['**/*.{js,css,html,png,json,svg}'] },
       manifest: {
-        name: 'Beach Volley Duel',
-        short_name: 'Volley Duel',
-        description: '2D beach volleyball duel',
+        name: '台灣金牌球 Taiwan Gold Volley',
+        short_name: '台灣金牌球',
+        description: '台灣金牌球：2D 排球對戰網頁遊戲',
         display: 'fullscreen',
         orientation: 'landscape',
         background_color: '#000000',

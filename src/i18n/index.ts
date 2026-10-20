@@ -1,7 +1,7 @@
 export type Lang = 'zh-TW' | 'en';
 
 const zh = {
-  title: '沙灘排球對決',
+  title: '台灣金牌球',
   subtitle: '2D 排球對戰',
   pressStart: '點擊或按任意鍵開始',
   vsCpu: '對戰電腦',
@@ -184,7 +184,7 @@ const zh = {
 export type MsgKey = keyof typeof zh;
 
 const en: Record<MsgKey, string> = {
-  title: 'Beach Volley Duel',
+  title: 'Taiwan Gold Volley',
   subtitle: '2D volleyball battle',
   pressStart: 'Tap or press any key',
   vsCpu: 'vs CPU',

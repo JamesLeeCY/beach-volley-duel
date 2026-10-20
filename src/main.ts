@@ -174,7 +174,7 @@ class App {
     this.touch2.apply({ ...s, touchSwap: false });
     applyPadMap(s.padMap);
     for (const el of document.querySelectorAll<HTMLElement>('[data-i18n]')) el.textContent = t(el.dataset.i18n as MsgKey);
-    document.title = t('title') + ' — Beach Volley Duel';
+    document.title = t('title');
   }
 
   resize() {
@@ -525,7 +525,7 @@ class App {
     if (this.mode !== 'demo') this.startDemo();
     const el = h('div', { class: 'screen transparent', onclick: () => this.showModes() },
       h('h1', {}, t('title')),
-      h('p', { class: 'sub' }, 'Beach Volley Duel'),
+      h('p', { class: 'sub' }, getLang() === 'en' ? '台灣金牌球' : 'Taiwan Gold Volley'),
       h('p', { class: 'blink' }, t('pressStart')),
     );
     this.show('title', el);
