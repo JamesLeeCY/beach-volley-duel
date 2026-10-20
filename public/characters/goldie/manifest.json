@@ -1,8 +1,8 @@
 {
-  "id": "momo",
+  "id": "goldie",
   "name": {
-    "zh-TW": "桃桃",
-    "en": "Momo"
+    "zh-TW": "金金",
+    "en": "Goldie"
   },
   "sprite": "sprite.png",
   "frameSize": [
@@ -72,5 +72,5 @@
   },
   "sfx": {},
   "portrait": "portrait.png",
-  "themeColor": "#F4A259"
+  "themeColor": "#E2A93B"
 }

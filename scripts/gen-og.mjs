@@ -18,8 +18,8 @@ try {
       result: '',
       score: [0, 0],
       players: [
-        { name: '桃桃', portrait: './characters/momo/portrait.png', color: '#F4A259' },
-        { name: '麻糬', portrait: './characters/mochi/portrait.png', color: '#F7B7C8' },
+        { name: '金金', portrait: './characters/goldie/portrait.png', color: '#E2A93B' },
+        { name: '橘子', portrait: './characters/kiki/portrait.png', color: '#F08A3C' },
       ],
       sceneId: 'beach',
       sceneName: '電腦對戰・同機雙人・線上對戰・10 個台灣場景',

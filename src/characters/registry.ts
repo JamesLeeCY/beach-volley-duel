@@ -31,7 +31,7 @@ export interface CharacterPack {
   local?: boolean;
 }
 
-export const DEFAULT_CHARACTER = 'momo';
+export const DEFAULT_CHARACTER = 'goldie';
 
 function fnv(text: string): string {
   let h = 0x811c9dc5;
@@ -99,8 +99,8 @@ export async function loadCharacters(base = './characters/'): Promise<CharacterP
   if (!packs.size) {
     // 連預設角色都載入失敗：建立純色佔位角色，確保不會當機
     const m = ManifestSchema.parse({
-      id: DEFAULT_CHARACTER, name: { 'zh-TW': '桃桃', en: 'Momo' }, sprite: '', frameSize: [64, 64],
-      animations: { idle: { row: 0, frames: 1, fps: 1 } }, themeColor: '#F29B38',
+      id: DEFAULT_CHARACTER, name: { 'zh-TW': '金金', en: 'Goldie' }, sprite: '', frameSize: [64, 64],
+      animations: { idle: { row: 0, frames: 1, fps: 1 } }, themeColor: '#E2A93B',
     });
     packs.set(m.id, { id: m.id, manifest: m, sprite: null, portrait: null, hash: '0' });
   }

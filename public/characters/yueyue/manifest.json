@@ -1,8 +1,8 @@
 {
-  "id": "kit",
+  "id": "yueyue",
   "name": {
-    "zh-TW": "小葉",
-    "en": "Kit"
+    "zh-TW": "月月",
+    "en": "Yueyue"
   },
   "sprite": "sprite.png",
   "frameSize": [
@@ -66,11 +66,11 @@
     "h": 64
   },
   "stats": {
-    "speed": 2,
+    "speed": -2,
     "jump": -1,
-    "power": -1
+    "power": 2
   },
   "sfx": {},
   "portrait": "portrait.png",
-  "themeColor": "#7CC26B"
+  "themeColor": "#C8A07A"
 }

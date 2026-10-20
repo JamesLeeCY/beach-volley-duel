@@ -59,7 +59,7 @@ test('key rebinding: capture a new key, persist it, use it in game', async ({ br
 });
 
 function packZip(id: string, name: string) {
-  const dir = 'public/characters/momo/';
+  const dir = 'public/characters/goldie/';
   const manifest = { ...JSON.parse(readFileSync(dir + 'manifest.json', 'utf8')), id, name: { en: name, 'zh-TW': name } };
   return zipSync({
     [`${id}/manifest.json`]: strToU8(JSON.stringify(manifest)),
@@ -88,7 +88,7 @@ test('character pack: drag in a .zip, stored in IndexedDB, local only', async ({
   await dropFile(page, new Uint8Array([1, 2, 3]), 'broken.zip');
   await expect(page.locator('#pack-status')).toHaveText('Import failed: not a zip file');
   // 不能覆蓋內建角色
-  await dropFile(page, packZip('momo', 'Fake'), 'momo.zip');
+  await dropFile(page, packZip('goldie', 'Fake'), 'goldie.zip');
   await expect(page.locator('#pack-status')).toContainText('built-in');
 
   await dropFile(page, packZip('e2e-zed', 'Zed'), 'zed.zip');

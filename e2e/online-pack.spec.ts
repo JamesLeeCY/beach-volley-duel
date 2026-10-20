@@ -4,7 +4,7 @@ import { strToU8, zipSync } from 'fflate';
 import { app, newPlayer, waitScreen } from './helpers';
 
 function packZip(id: string, name: string) {
-  const dir = 'public/characters/mochi/';
+  const dir = 'public/characters/glidey/';
   const manifest = { ...JSON.parse(readFileSync(dir + 'manifest.json', 'utf8')), id, name: { en: name, 'zh-TW': name } };
   return zipSync({
     [`${id}/manifest.json`]: strToU8(JSON.stringify(manifest)),

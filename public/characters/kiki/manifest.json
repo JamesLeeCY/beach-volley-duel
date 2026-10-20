@@ -1,8 +1,8 @@
 {
-  "id": "mochi",
+  "id": "kiki",
   "name": {
-    "zh-TW": "麻糬",
-    "en": "Mochi"
+    "zh-TW": "橘子",
+    "en": "Kiki"
   },
   "sprite": "sprite.png",
   "frameSize": [
@@ -72,5 +72,5 @@
   },
   "sfx": {},
   "portrait": "portrait.png",
-  "themeColor": "#F7B7C8"
+  "themeColor": "#F08A3C"
 }

@@ -67,7 +67,7 @@ class App {
   state: GameState = createState(1);
   prev: GameState = this.state;
   ais: [AiController | null, AiController | null] = [null, null];
-  chars: [string, string] = ['momo', 'kit'];
+  chars: [string, string] = ['goldie', 'kiki'];
   humanSide: 0 | 1 = 0;
   difficulty: Difficulty = 'normal';
   paused = false;

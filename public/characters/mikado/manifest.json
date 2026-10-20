@@ -1,8 +1,8 @@
 {
-  "id": "tomo",
+  "id": "mikado",
   "name": {
-    "zh-TW": "燈燈",
-    "en": "Tomo"
+    "zh-TW": "帝帝",
+    "en": "Mikado"
   },
   "sprite": "sprite.png",
   "frameSize": [
@@ -66,11 +66,11 @@
     "h": 64
   },
   "stats": {
-    "speed": 1,
+    "speed": 0,
     "jump": 1,
-    "power": -2
+    "power": 1
   },
   "sfx": {},
   "portrait": "portrait.png",
-  "themeColor": "#FFC86B"
+  "themeColor": "#6A7AE0"
 }
