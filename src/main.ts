@@ -754,6 +754,11 @@ class App {
         p.okBtn.style.display = s.ctrl === 'human' ? '' : 'none';
         p.thumbs.forEach((b, i) => {
           b.classList.toggle('sel', i === s.idx);
+          // 小頭像可以左右滑動時，讓選中的那個保持在看得到的位置
+          if (i === s.idx && b.parentElement && b.parentElement.scrollWidth > b.parentElement.clientWidth) {
+            const strip = b.parentElement;
+            strip.scrollLeft = Math.max(0, b.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + b.offsetWidth / 2);
+          }
           b.disabled = s.ctrl === 'remote' || (s.ready && s.ctrl === 'human');
         });
         p.okBtn.textContent = s.ready ? '✕' : t('ready');

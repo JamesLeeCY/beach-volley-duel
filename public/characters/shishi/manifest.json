@@ -1,0 +1,76 @@
+{
+  "id": "shishi",
+  "name": {
+    "zh-TW": "石石",
+    "en": "Shishi"
+  },
+  "sprite": "sprite.png",
+  "frameSize": [
+    128,
+    128
+  ],
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 5,
+      "fps": 8
+    },
+    "run": {
+      "row": 6,
+      "frames": 5,
+      "fps": 14
+    },
+    "jump": {
+      "row": 1,
+      "frames": 5,
+      "fps": 10
+    },
+    "spike": {
+      "row": 2,
+      "frames": 5,
+      "fps": 15
+    },
+    "dive": {
+      "row": 3,
+      "frames": 3,
+      "fps": 10
+    },
+    "win": {
+      "row": 4,
+      "frames": 5,
+      "fps": 6
+    },
+    "lose": {
+      "row": 5,
+      "frames": 5,
+      "fps": 6
+    },
+    "bump": {
+      "row": 7,
+      "frames": 5,
+      "fps": 20
+    },
+    "cheer": {
+      "row": 8,
+      "frames": 5,
+      "fps": 10
+    },
+    "oops": {
+      "row": 9,
+      "frames": 5,
+      "fps": 8
+    }
+  },
+  "hitbox": {
+    "w": 64,
+    "h": 64
+  },
+  "stats": {
+    "speed": 2,
+    "jump": 0,
+    "power": 0
+  },
+  "sfx": {},
+  "portrait": "portrait.png",
+  "themeColor": "#C8A878"
+}

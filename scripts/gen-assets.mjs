@@ -35,14 +35,90 @@ function encodePng(img) {
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
   ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-  const raw = Buffer.alloc((w * 4 + 1) * h);
+  // 濾波用 Sub（左邊像素差）：對大片平滑上色與透明區最有效
+  const stride = w * 4;
+  const raw = Buffer.alloc((stride + 1) * h);
   for (let y = 0; y < h; y++) {
-    raw[y * (w * 4 + 1)] = 0;
-    px.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4);
+    const o = y * (stride + 1);
+    raw[o] = 1;
+    for (let i = 0; i < stride; i++) raw[o + 1 + i] = (px[y * stride + i] - (i >= 4 ? px[y * stride + i - 4] : 0)) & 0xff;
   }
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw, { level: 9 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * 256 色調色盤 PNG（color type 3）：用 median cut 把不透明顏色縮成 255 色，索引 0 是透明。
+ * 角色圖一張只有一個角色，255 色就足夠，檔案約小 4～6 倍。
+ */
+function encodePng8(img) {
+  const { w, h, px } = img;
+  const counts = new Map();
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] < 128) continue;
+    const key = (px[i] << 16) | (px[i + 1] << 8) | px[i + 2];
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let boxes = [[...counts.entries()].map(([k, n]) => [(k >> 16) & 255, (k >> 8) & 255, k & 255, n])];
+  while (boxes.length < 255) {
+    // 挑像素最多、且還能切的盒子，沿最長的色彩軸從中位數切開
+    let bi = -1, bestN = 0;
+    boxes.forEach((b, i) => {
+      if (b.length < 2) return;
+      const n = b.reduce((t, c) => t + c[3], 0);
+      if (n > bestN) { bestN = n; bi = i; }
+    });
+    if (bi < 0) break;
+    const box = boxes[bi];
+    const range = [0, 1, 2].map((ch) => Math.max(...box.map((c) => c[ch])) - Math.min(...box.map((c) => c[ch])));
+    const ch = range.indexOf(Math.max(...range));
+    box.sort((a, b) => a[ch] - b[ch]);
+    let half = bestN / 2, acc = 0, cut = 1;
+    for (let i = 0; i < box.length - 1; i++) { acc += box[i][3]; if (acc >= half) { cut = i + 1; break; } }
+    boxes.splice(bi, 1, box.slice(0, cut), box.slice(cut));
+  }
+  const palette = boxes.map((b) => {
+    const n = b.reduce((t, c) => t + c[3], 0) || 1;
+    return [0, 1, 2].map((ch) => Math.round(b.reduce((t, c) => t + c[ch] * c[3], 0) / n));
+  });
+  const cache = new Map();
+  const nearest = (r, g, b) => {
+    const key = (r << 16) | (g << 8) | b;
+    let v = cache.get(key);
+    if (v !== undefined) return v;
+    let best = 0, bd = Infinity;
+    palette.forEach((c, i) => {
+      const d = (c[0] - r) ** 2 * 2 + (c[1] - g) ** 2 * 3 + (c[2] - b) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    });
+    v = best + 1;
+    cache.set(key, v);
+    return v;
+  };
+  const raw = Buffer.alloc((w + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w + 1)] = 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      raw[y * (w + 1) + 1 + x] = px[i + 3] < 128 ? 0 : nearest(px[i], px[i + 1], px[i + 2]);
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 3; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  const plte = Buffer.alloc((palette.length + 1) * 3);
+  palette.forEach((c, i) => { plte[(i + 1) * 3] = c[0]; plte[(i + 1) * 3 + 1] = c[1]; plte[(i + 1) * 3 + 2] = c[2]; });
+  const trns = Buffer.from([0]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('PLTE', plte),
+    chunk('tRNS', trns),
     chunk('IDAT', deflateSync(raw, { level: 9 })),
     chunk('IEND', Buffer.alloc(0)),
   ]);
@@ -90,7 +166,7 @@ function pen(img) {
       for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
         const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
         const d2 = nx * nx + ny * ny;
-        if (d2 <= 1) put(img, x, y, colorAt(nx, ny, d2));
+        if (d2 <= 1) put(img, x, y, colorAt(nx, ny, d2, x, y));
       }
   };
   const P = {
@@ -132,7 +208,7 @@ function pen(img) {
             const [xi, yi] = sp[i], [xj, yj] = sp[j];
             if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
           }
-          if (inside) put(img, x, y, colorAt(px / S, py / S));
+          if (inside) put(img, x, y, colorAt(px / S, py / S, x, y));
         }
     },
     poly(pts, c, a = 255) {
@@ -204,7 +280,7 @@ function outline(img, tint, line = 2, border = 2) {
         }
     }
   };
-  grow(1, (n) => mix(mix(n, [12, 8, 12], 0.7), T, 0.35));
+  grow(1, (n) => mix(mix(n, [40, 24, 18], 0.62), T, 0.3));
   if (line > 1) grow(line - 1, (n) => n); // 沿用線色，加粗線條
   if (border > 0) grow(border, () => [255, 255, 255, 255]);
 }
@@ -231,67 +307,75 @@ function blit(dst, src, dx, dy, scale = 1) {
     }
 }
 
-// ---------- 3D 質感的原創動物角色（台灣主題） ----------
-// 畫風：像 3D 遊戲裡的寵物怪獸——
-// 1. 體積感上色：漫射光（左上前方）＋陰影偏冷色＋高光（鏡面反射）＋背光邊緣（rim light）＋底部環境遮蔽。
-// 2. 眼睛：深色光滑的眼球、一個大高光＋一個小反光，沒有睫毛、沒有腮紅。
-// 3. 體型：頭大但身體結實、四肢分明，站姿穩。
-// 4. 線稿：細細的深色外框（不加白邊）。
-const INK = '#20161a';
+// ---------- 吉卜力風的原創台灣動物角色 ----------
+// 畫風重點（原創角色，只取手繪動畫的感覺）：
+// 1. 像水彩／賽璐璐手繪：底色＋一種柔和的陰影色（偏冷的紫褐，邊界柔軟）＋暖色受光。
+// 2. 紙張與筆刷質感：細微的顆粒與橫向筆觸；靠近輪廓處顏色稍深（水彩積色）。
+// 3. 自然、偏低彩度的配色。
+// 4. 眼睛：小小的黑色豆豆眼＋一點高光（貓科、猛禽則是有顏色的虹膜）。
+// 5. 線條：細細的暖褐色線，取相鄰顏色加深。
+const INK = '#2a1e1a';
 
 function hexMix(a, b, t) {
   const A = hex(a), B = hex(b);
   return '#' + [0, 1, 2].map((k) => Math.round(A[k] * (1 - t) + B[k] * t).toString(16).padStart(2, '0')).join('');
 }
 
-const LIGHT = (() => { const v = [-0.5, -0.7, 0.55]; const n = Math.hypot(...v); return v.map((x) => x / n); })();
-const HALF = (() => { const v = [LIGHT[0], LIGHT[1], LIGHT[2] + 1]; const n = Math.hypot(...v); return v.map((x) => x / n); })();
+function hash2(x, y) {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
 
-/** 依法線算出 3D 光照後的顏色 */
-function lit(base, nx, ny, nz, o = {}) {
+function smooth(e0, e1, x) {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+const LIGHT = (() => { const v = [-0.55, -0.65, 0.5]; const n = Math.hypot(...v); return v.map((x) => x / n); })();
+
+/** 手繪上色：一種柔和陰影＋暖色受光＋筆刷顆粒；px/py 是像素座標（做質感用） */
+function paint(base, nx, ny, nz, px, py, o = {}) {
   const B = hex(base);
-  const diffuse = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]);
-  const spec = Math.pow(Math.max(0, nx * HALF[0] + ny * HALF[1] + nz * HALF[2]), o.shine ?? 24) * (o.gloss ?? 0.16);
-  const rim = Math.pow(1 - Math.max(0, nz), 3) * (o.rim ?? 0.28) * Math.max(0, 0.4 - ny * 0.6);
-  const ao = 1 - 0.28 * Math.pow(Math.max(0, ny), 2);
-  const k = (0.5 + 0.62 * diffuse) * ao;
-  const shadow = hex(o.shadow ?? '#2c2a5a');
-  const s = Math.max(0, 0.75 - diffuse) * 0.32; // 陰影偏冷色
-  return [0, 1, 2].map((i) => {
-    const v = B[i] * k * (1 - s) + shadow[i] * s + 255 * spec + 205 * rim;
-    return Math.max(0, Math.min(255, Math.round(v)));
-  }).concat([255]);
+  const d = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
+  const S = mix(mix(B, [0, 0, 0], 0.3), hex(o.shadow ?? '#5a4a7a'), 0.24);
+  let c = mix(S, B, smooth(0.16, 0.36, d));
+  c = mix(c, hex(o.light ?? '#fff1d6'), smooth(0.72, 0.98, d) * 0.3);
+  // 筆刷質感：只保留橫向的筆觸（每 2×5 像素一塊），顏色取 4 的倍數，讓 PNG 壓得小
+  const g = (hash2(Math.floor(px * 0.25), Math.floor(py * 0.14)) - 0.5) * 0.08;
+  return [0, 1, 2].map((i) => Math.max(0, Math.min(252, Math.round((c[i] * (1 + g)) / 4) * 4))).concat([255]);
 }
 
-/** 3D 球體（橢球）上色 */
+/** 圓形部位（頭、身體、手腳） */
 function ball(P, cx, cy, rx, ry, base, o = {}) {
-  P.raw(cx, cy, rx, ry, (nx, ny, d2) => lit(base, nx, ny, Math.sqrt(Math.max(0, 1 - d2)), o));
+  P.raw(cx, cy, rx, ry, (nx, ny, d2, px, py) => {
+    const c = paint(base, nx, ny, Math.sqrt(Math.max(0, 1 - d2)), px, py, o);
+    // 水彩積色：靠近輪廓稍深
+    const edge = d2 > 0.84 ? 0.93 : 1;
+    return [c[0] * edge, c[1] * edge, c[2] * edge, 255].map(Math.round);
+  });
 }
 
-/** 有體積感的多邊形（耳朵、喙、羽毛）：用位置估一個斜面法線 */
+/** 平面部位（耳朵、喙、羽毛、角）：依位置估一個斜面 */
 function slab(P, pts, base, o = {}) {
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   const w = Math.max(1, (x1 - x0) / 2), h = Math.max(1, (y1 - y0) / 2);
-  const col = (px, py) => {
-    const nx = ((px - cx) / w) * 0.6, ny = ((py - cy) / h) * 0.6;
-    return lit(base, nx, ny, Math.sqrt(Math.max(0.05, 1 - nx * nx - ny * ny)), o);
-  };
-  P.polyFn(pts, col);
+  P.polyFn(pts, (lx, ly, px, py) => {
+    const nx = ((lx - cx) / w) * 0.55, ny = ((ly - cy) / h) * 0.55;
+    return paint(base, nx, ny, Math.sqrt(Math.max(0.05, 1 - nx * nx - ny * ny)), px, py, o);
+  });
 }
 
-/** 一串圓組成的管子（尾巴、脖子） */
+/** 由一串圓組成的管子（尾巴、脖子、四肢） */
 function tube(P, pts, r0, r1, base, o = {}) {
   const n = pts.length;
   const samples = [];
   for (let i = 0; i < n - 1; i++) {
     const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
     const steps = Math.max(2, Math.ceil(Math.hypot(bx - ax, by - ay) * 1.5));
-    for (let k = 0; k < steps; k++) {
-      const t = k / steps;
-      samples.push([ax + (bx - ax) * t, ay + (by - ay) * t, (i + t) / (n - 1)]);
-    }
+    for (let k = 0; k < steps; k++) samples.push([ax + ((bx - ax) * k) / steps, ay + ((by - ay) * k) / steps, (i + k / steps) / (n - 1)]);
   }
   samples.push([...pts[n - 1], 1]);
   for (const [x, y, t] of samples) {
@@ -300,255 +384,244 @@ function tube(P, pts, r0, r1, base, o = {}) {
   }
 }
 
-/** 遊戲角色式的眼睛：深色光滑眼球＋大高光＋小反光 */
+/** 吉卜力式的豆豆眼（貓科、猛禽有顏色的虹膜） */
 function eye(P, x, y, kind, o = {}) {
   const s = o.size ?? 1;
-  const dark = o.dark ?? '#17101a';
+  const dark = '#1a1416';
   if (kind === 'happy') {
-    P.curve(x - 2.8 * s, y + 1.2, x, y - 2.6 * s, x + 2.8 * s, y + 1.2, dark, 1.6);
+    P.curve(x - 2.2 * s, y + 0.8, x, y - 1.8 * s, x + 2.2 * s, y + 0.8, dark, 1);
     return;
   }
   if (kind === 'closed') {
-    P.line(x - 2.8 * s, y + 0.5, x + 2.8 * s, y + 0.5, dark, 1.4);
+    P.curve(x - 2.2 * s, y, x, y + 1.2 * s, x + 2.2 * s, y, dark, 1);
     return;
   }
   if (kind === 'surprised') {
-    P.ellipse(x, y, 2.6 * s, 3.2 * s, '#ffffff');
-    P.ellipse(x + 0.3, y + 0.2, 1.1 * s, 1.4 * s, dark);
-    P.dot(x - 0.2, y - 0.5, '#ffffff');
+    P.ellipse(x, y, 2.1 * s, 2.4 * s, '#fffaf0');
+    P.ellipse(x, y, 0.9 * s, 1.1 * s, dark);
     return;
   }
-  const h = kind === 'sleepy' ? 0.55 : kind === 'sad' ? 0.85 : 1;
-  const ey = y + (1 - h) * 2 * s;
-  // 眼球：深色，下方帶一點虹膜色的反射
-  P.raw(x, ey, 2.5 * s, 3.3 * s * h, (nx, ny) => {
-    const t = Math.max(0, ny) * 0.7;
-    return mix(hex(dark), hex(o.iris ?? '#4a3a5a'), t);
-  });
-  if (o.slit) {
-    // 貓：彩色虹膜＋直立瞳孔
-    P.ellipse(x, ey, 2.1 * s, 2.9 * s * h, o.iris);
-    P.ellipse(x, ey, 0.7 * s, 2.5 * s * h, dark);
+  if (o.iris) {
+    P.ellipse(x, y, 2.5 * s, 2.8 * s, dark);
+    P.ellipse(x, y, 2 * s, 2.3 * s, o.iris);
+    if (o.slit) P.ellipse(x + 0.2, y, 0.65 * s, 1.9 * s, dark);
+    else P.ellipse(x + 0.2, y, 1 * s, 1.1 * s, dark);
+  } else {
+    P.ellipse(x, y, 1.75 * s, 2.15 * s, dark);
   }
-  P.ellipse(x - 0.9 * s, ey - 1.3 * s * h, 1.15 * s, 1.25 * s * h, '#ffffff');
-  P.ellipse(x + 1 * s, ey + 1.5 * s * h, 0.5 * s, 0.5 * s, '#ffffff', 200);
-  if (kind === 'focus') {
-    // 認真：斜斜的眉骨壓在眼睛上方
-    P.polyFn([[x - 3.4 * s, ey - 3.8 * s], [x + 3.2 * s, ey - 1.6 * s], [x + 3.4 * s, ey - 3.6 * s], [x - 3.4 * s, ey - 5.2 * s]], () => hex(o.brow ?? '#3a2a20'));
-  }
+  P.ellipse(x - 0.6 * s, y - 0.8 * s, 0.6 * s, 0.65 * s, '#ffffff');
+  const brow = o.brow ?? '#3a2a22';
+  if (kind === 'focus') P.line(x - 2.6 * s, y - 3.4 * s, x + 2.2 * s, y - 2.3 * s, brow, 0.9);
   if (kind === 'sad') {
-    P.line(x - 3 * s, ey - 2.4 * s, x + 2.6 * s, ey - 4 * s, o.brow ?? '#3a2a20', 0.9);
-    P.ellipse(x + 1.6, ey + 3.6, 0.9, 1.4, '#8fd6ff', 230);
+    P.line(x - 2.4 * s, y - 2.6 * s, x + 2.2 * s, y - 3.6 * s, brow, 0.8);
+    P.ellipse(x + 1.4, y + 3, 0.8, 1.2, '#8fcfee', 220);
+  }
+  if (kind === 'sleepy' && o.skin) {
+    P.line(x - 2.6 * s, y - 1.4 * s, x + 2.6 * s, y - 1.4 * s, o.skin, 2.2);
+    P.line(x - 2.4 * s, y - 0.4 * s, x + 2.4 * s, y - 0.4 * s, dark, 0.8);
   }
 }
 
-/** 嘴巴：平常一條小弧線；開心時張嘴露出舌頭 */
+/** 嘴巴：小小的弧線；開心時張開 */
 function mouth(P, x, y, eyes) {
   if (eyes === 'happy' || eyes === 'surprised') {
-    P.raw(x, y + 0.8, 2.4, 2, (nx, ny) => (ny < -0.15 ? [0, 0, 0, 0] : hex(ny > 0.4 ? '#ff7f8a' : '#5a1a26')));
+    P.raw(x, y + 0.6, 1.9, 1.6, (nx, ny) => (ny < -0.15 ? [0, 0, 0, 0] : hex(ny > 0.4 ? '#e88a8a' : '#5a2228')));
     return;
   }
   if (eyes === 'sad') {
-    P.curve(x - 1.8, y + 1.2, x, y - 0.4, x + 1.8, y + 1.2, INK, 0.7);
+    P.curve(x - 1.5, y + 1, x, y - 0.3, x + 1.5, y + 1, INK, 0.6);
     return;
   }
-  P.curve(x - 1.8, y, x, y + 1.2, x + 1.8, y, INK, 0.7);
+  P.curve(x - 1.5, y, x, y + 1, x + 1.5, y, INK, 0.6);
 }
 
 /**
- * 共用骨架：結實的身體＋大頭＋四肢。各角色用 o.* 加上自己的特徵。
- * 頭部中心 (hx, hy)、身體中心 (cx, by)；角色面向右（3/4 側面）。
+ * 共用骨架：身體＋頭＋四肢（比 Q 版更接近自然比例）。
+ * o.wing：手臂畫成翅膀（鳥類）；o.legs === false：不畫腳。
  */
 function creature(P, p, o) {
   const cx = 31 + p.dx;
   const by = 47 + p.bob * 0.7;
-  const hx = cx + 2;
-  const hy = 26 + p.bob * 0.65;
+  const hx = cx + 2 + (o.headDx ?? 0);
+  const hy = (o.headY ?? 27) + p.bob * 0.65;
   const fur = o.fur;
-  const shade = o.shade ?? {};
-  // 腳
+  const sh = o.shade ?? {};
+  const limb = (from, to, r0, r1) => {
+    if (o.wing) slab(P, [[from[0] - 1, from[1] - 4], [to[0] + 2, to[1]], [to[0] - 2, to[1] + 3], [from[0] + 1, from[1] + 4]], o.armColor ?? fur, sh);
+    else tube(P, [from, to], r0, r1, o.armColor ?? fur, sh);
+  };
   if (o.legs !== false) {
-    for (const [lx, sgn] of [[-6, 1], [6, -1]]) {
+    for (const [lx, sgn] of [[-5.5, 1], [5.5, -1]]) {
       const x = cx + lx + sgn * p.legs * 0.8;
-      tube(P, [[x, by + 6], [x, 58]], 3.6, 3.4, o.legColor ?? fur, shade);
-      ball(P, x + 1.5, 60, 5, 2.8, o.footColor ?? o.legColor ?? fur, shade);
+      tube(P, [[x, by + 6], [x, 58]], o.legR ?? 3.2, (o.legR ?? 3.2) - 0.3, o.legColor ?? fur, sh);
+      ball(P, x + 1.5, 60, o.footRx ?? 4.6, 2.6, o.footColor ?? o.legColor ?? fur, sh);
     }
   }
   o.behind?.(hx, hy, cx, by);
-  // 後面那隻手
   const arm2 = [cx + p.arm2[0] * 0.8, 42 + p.bob * 0.7 + p.arm2[1] * 0.8];
-  tube(P, [[cx - 4, by - 5], arm2], 3.2, 3.4, o.armColor ?? fur, shade);
-  // 身體
-  ball(P, cx, by, 12.5 * p.sx, 12 * p.sy, fur, shade);
+  limb([cx - 4, by - 5], arm2, 3, 3.2);
+  ball(P, cx, by, (o.bodyRx ?? 12.5) * p.sx, (o.bodyRy ?? 12) * p.sy, fur, sh);
   o.belly?.(cx, by);
-  // 舉高的前手（扣殺、歡呼）畫在頭後面，避免手臂橫過臉
   const arm = [cx + p.arm[0] * 0.85, 42 + p.bob * 0.7 + p.arm[1] * 0.8];
   const raised = p.arm[1] < -10;
   if (raised) {
-    tube(P, [[cx + 3, by - 5], arm], 3, 3.6, o.armColor ?? fur, shade);
+    limb([cx + 3, by - 5], arm, 2.9, 3.4);
     o.hand?.(arm[0], arm[1]);
   }
-  // 頭
   o.headBack?.(hx, hy);
-  ball(P, hx, hy, (o.headR ?? 16.5) * p.sx, (o.headRy ?? 15.5) * p.sy, o.headColor ?? fur, shade);
+  ball(P, hx, hy, (o.headR ?? 15) * p.sx, (o.headRy ?? 14) * p.sy, o.headColor ?? fur, sh);
   o.head?.(hx, hy);
-  // 臉
   const ey = hy + (o.eyeY ?? 0) * p.sy;
-  const eo = { size: o.eyeSize ?? 1, iris: o.iris, slit: o.slit, brow: o.brow, dark: o.eyeDark };
+  const eo = { size: o.eyeSize ?? 1, iris: o.iris, slit: o.slit, brow: o.brow, skin: o.skin ?? o.headColor ?? fur };
   eye(P, hx + (o.eyeX1 ?? 3), ey, p.eyes, eo);
-  eye(P, hx + (o.eyeX2 ?? 12), ey - 0.5, p.eyes, { ...eo, size: (o.eyeSize ?? 1) * 0.9 });
-  if (o.mouth !== false) mouth(P, hx + (o.mouthX ?? 9), ey + (o.mouthY ?? 7), p.eyes);
-  o.front?.(hx, hy);
-  // 前面那隻手
+  eye(P, hx + (o.eyeX2 ?? 11.5), ey - 0.4, p.eyes, { ...eo, size: (o.eyeSize ?? 1) * 0.9 });
+  if (o.mouth !== false) mouth(P, hx + (o.mouthX ?? 8.5), ey + (o.mouthY ?? 6.5), p.eyes);
+  o.front?.(hx, hy, cx, by);
   if (!raised) {
-    tube(P, [[cx + 3, by - 5], arm], 3.2, 3.8, o.armColor ?? fur, shade);
+    limb([cx + 3, by - 5], arm, 3, 3.6);
     o.hand?.(arm[0], arm[1]);
   }
 }
 
 const CHARS = {
+  yunyun: {
+    name: { 'zh-TW': '雲雲', en: 'Yunyun' },
+    stats: { speed: -1, jump: 2, power: -1 },
+    themeColor: '#8FC2EC',
+    outline: '#4a6688',
+    draw(P, p) {
+      // 雲朵精靈：蓬鬆的雲身、頭頂一滴雨
+      const cloud = '#eef4fb';
+      const soft = { shadow: '#7a8ec0', light: '#ffffff' };
+      creature(P, p, {
+        fur: cloud, shade: soft, legColor: '#e2ecf8', armColor: '#e6eff9', bodyRx: 13, bodyRy: 11, headY: 28,
+        head: (hx, hy) => {
+          const s = (x, y, r) => ball(P, hx + x * p.sx, hy + y * p.sy, r * p.sx, r * p.sy, cloud, soft);
+          s(-13, 3, 8); s(13, 3, 8); s(-7, -9, 9); s(6, -10, 10); s(0, 2, 14);
+          const tx = hx + 4, ty = hy - 21 * p.sy;
+          slab(P, [[tx, ty - 5], [tx - 3.4, ty + 2], [tx + 3.4, ty + 2]], '#7cb8e6');
+          ball(P, tx, ty + 2.2, 3.4, 3.4, '#7cb8e6');
+        },
+        eyeX1: 4, eyeX2: 12, eyeY: 1, mouthX: 8.5, mouthY: 6.5,
+      });
+    },
+  },
   kiki: {
     name: { 'zh-TW': '橘子', en: 'Kiki' },
     stats: { speed: 1, jump: 1, power: -1 },
-    themeColor: '#F08A3C',
-    outline: '#3a1a08',
+    themeColor: '#E0904A',
+    outline: '#4a2412',
     draw(P, p) {
-      // 橘色虎斑貓：尖耳朵、額頭條紋、白色口鼻與胸口、長尾巴、綠色直瞳
-      const fur = '#f08a3c', white = '#fbf3e8', stripe = '#b8551c';
+      // 橘色虎斑貓：尖耳朵、額頭條紋、白色口鼻與胸口、長尾巴、金色貓眼
+      const fur = '#e0904a', white = '#f6eedf', stripe = '#a8602e';
       creature(P, p, {
-        fur, iris: '#6ccf4a', slit: true, brow: '#a24a18',
+        fur, iris: '#e8c040', slit: true, brow: '#8a4a20',
         belly: (cx, by) => ball(P, cx + 3, by + 1, 7.5 * p.sx, 8 * p.sy, white),
         behind: (hx, hy, cx, by) => {
           const tw = p.tail;
-          tube(P, [[cx - 9, by + 4], [cx - 18, by - 2 + tw * 0.5], [cx - 21, by - 14 + tw], [cx - 17, by - 22 + tw]], 3, 2.6, fur);
-          for (const t of [[cx - 15, by + 1], [cx - 20, by - 8 + tw * 0.7]]) P.line(t[0] - 2, t[1], t[0] + 2, t[1] - 1, stripe, 1);
-          // 尖耳朵
-          slab(P, [[hx - 14, hy - 4], [hx - 12, hy - 21], [hx - 3, hy - 12]], fur);
-          slab(P, [[hx + 3, hy - 13], [hx + 9, hy - 23], [hx + 14, hy - 5]], fur);
-          slab(P, [[hx - 11.5, hy - 7], [hx - 11, hy - 16.5], [hx - 6, hy - 12]], '#f2a0a8');
-          slab(P, [[hx + 5.5, hy - 12], [hx + 9, hy - 19], [hx + 11.5, hy - 7]], '#f2a0a8');
+          tube(P, [[cx - 9, by + 4], [cx - 17, by - 2 + tw * 0.5], [cx - 20, by - 13 + tw], [cx - 16, by - 21 + tw]], 2.8, 2.4, fur);
+          for (const q of [[cx - 15, by + 1], [cx - 19, by - 8 + tw * 0.7]]) P.line(q[0] - 2, q[1], q[0] + 2, q[1] - 1, stripe, 1);
+          slab(P, [[hx - 13, hy - 4], [hx - 11, hy - 20], [hx - 3, hy - 11]], fur);
+          slab(P, [[hx + 3, hy - 12], [hx + 9, hy - 21], [hx + 13, hy - 5]], fur);
+          slab(P, [[hx - 10.5, hy - 7], [hx - 10, hy - 15.5], [hx - 6, hy - 11]], '#e8a8a0');
+          slab(P, [[hx + 5.5, hy - 11], [hx + 9, hy - 17.5], [hx + 10.5, hy - 7]], '#e8a8a0');
         },
         head: (hx, hy) => {
-          // 額頭的虎斑
-          for (const dx of [-3, 1, 5]) P.line(hx + dx, hy - 14, hx + dx + 0.6, hy - 9, stripe, 1.1);
-          P.line(hx - 13, hy - 2, hx - 9, hy - 1, stripe, 1);
-          // 白色口鼻
-          ball(P, hx + 8, hy + 7 * p.sy, 8, 5.2, white);
-          ball(P, hx + 9, hy + 3.6 * p.sy, 1.6, 1.1, '#e8707a', { gloss: 0.6 });
-          // 鬍鬚
-          for (const dy of [-0.5, 1.5]) P.line(hx + 15, hy + 6 + dy, hx + 21, hy + 5 + dy * 1.6, '#ffffff', 0.4);
+          for (const dx of [-3, 1, 5]) P.line(hx + dx, hy - 13, hx + dx + 0.6, hy - 8.5, stripe, 1);
+          ball(P, hx + 7.5, hy + 6.5 * p.sy, 7, 4.8, white);
+          ball(P, hx + 8.5, hy + 3.4 * p.sy, 1.4, 1, '#d8787a');
+          for (const dy of [-0.5, 1.5]) P.line(hx + 14, hy + 5.5 + dy, hx + 20, hy + 4.5 + dy * 1.6, '#fffaf0', 0.4);
         },
-        eyeY: 0, mouthX: 9, mouthY: 7.5,
+        eyeY: 0, mouthX: 8.5, mouthY: 7,
       });
     },
   },
   goldie: {
     name: { 'zh-TW': '金金', en: 'Goldie' },
     stats: { speed: 0, jump: 0, power: 0 },
-    themeColor: '#E2A93B',
-    outline: '#3a2408',
+    themeColor: '#D9A85A',
+    outline: '#4a3010',
     draw(P, p) {
-      // 黃金獵犬：垂耳、突出的口鼻、亮黑色鼻頭、蓬鬆胸毛與羽狀尾巴
-      const fur = '#e8b04a', deep = '#c98a2a', cream = '#f8e2b0';
+      // 黃金獵犬：垂耳、突出的口鼻、黑鼻頭、奶油色胸毛、蓬鬆尾巴
+      const fur = '#d9a85a', deep = '#b07e3a', cream = '#f2dfb4';
       creature(P, p, {
-        fur, iris: '#6a3a1a', brow: '#9a6420',
-        belly: (cx, by) => {
-          ball(P, cx + 3, by - 1, 8 * p.sx, 8.5 * p.sy, cream);
-        },
+        fur, brow: '#8a5a20',
+        belly: (cx, by) => ball(P, cx + 3, by - 1, 8 * p.sx, 8.5 * p.sy, cream),
         behind: (hx, hy, cx, by) => {
           const tw = p.tail;
-          tube(P, [[cx - 10, by + 2], [cx - 17, by - 3 + tw * 0.6], [cx - 21, by - 11 + tw]], 4, 3.4, fur);
-          ball(P, cx - 22, by - 14 + tw, 3.6, 3.6, cream);
+          tube(P, [[cx - 10, by + 2], [cx - 17, by - 3 + tw * 0.6], [cx - 21, by - 11 + tw]], 3.8, 3.2, fur);
+          ball(P, cx - 22, by - 14 + tw, 3.4, 3.4, cream);
         },
-        headBack: (hx, hy) => {
-          // 垂耳（頭的後面那隻）
-          ball(P, hx - 13, hy + 2, 5, 9, deep);
-        },
+        headBack: (hx, hy) => ball(P, hx - 12, hy + 2, 4.6, 8.5, deep),
         head: (hx, hy) => {
-          // 口鼻
-          ball(P, hx + 12, hy + 6 * p.sy, 8.5, 6, cream);
-          ball(P, hx + 19, hy + 3.5 * p.sy, 2.6, 2, '#1e1416', { gloss: 0.8, shine: 40 });
-          // 前面那隻垂耳（在眼睛後方，不擋臉）
-          ball(P, hx - 9, hy + 3, 4.6, 8.5, deep);
+          ball(P, hx + 11, hy + 6 * p.sy, 8, 5.6, cream);
+          ball(P, hx + 18, hy + 3.5 * p.sy, 2.4, 1.9, '#2a2224');
+          ball(P, hx - 8, hy + 3, 4.4, 8, deep);
         },
-        eyeX1: 5, eyeX2: 13, eyeY: -1.5, mouthX: 14, mouthY: 9.5,
+        eyeX1: 4.5, eyeX2: 12, eyeY: -1.5, mouthX: 13, mouthY: 9,
       });
     },
   },
   glidey: {
     name: { 'zh-TW': '滑滑', en: 'Glidey' },
     stats: { speed: -1, jump: 2, power: -1 },
-    themeColor: '#9A7A5A',
-    outline: '#241a10',
+    themeColor: '#A08868',
+    outline: '#3a2a1a',
     draw(P, p) {
-      // 白面鼯鼠：灰褐色毛、白色臉頰、超大的夜行性眼睛、手腳之間的滑翔膜、扁平大尾巴
-      const fur = '#9a7a5a', white = '#f4ece0', membrane = '#7a5e44';
+      // 白面鼯鼠：灰褐毛、白色臉頰、大眼睛、滑翔膜、扁平大尾巴
+      const fur = '#8e7458', white = '#efe6d6', membrane = '#76604a';
       creature(P, p, {
-        fur, iris: '#3a2a4a', eyeSize: 1.35, brow: '#5a4430',
+        fur, eyeSize: 1.35, brow: '#5a4430',
         belly: (cx, by) => ball(P, cx + 2, by + 1, 8 * p.sx, 8.5 * p.sy, white),
         behind: (hx, hy, cx, by) => {
           const tw = p.tail;
-          // 扁平蓬鬆的尾巴
-          ball(P, cx - 16, by - 4 + tw * 0.6, 6, 13, '#8a6a4a');
-          ball(P, cx - 16, by - 12 + tw, 4.5, 6, '#6a5038');
-          // 滑翔膜：從後手拉到腳
+          ball(P, cx - 16, by - 4 + tw * 0.6, 5.6, 12, '#806448');
+          ball(P, cx - 16, by - 12 + tw, 4.2, 5.4, '#66503a');
           const ax = cx + p.arm2[0] * 0.8, ay = 42 + p.bob * 0.7 + p.arm2[1] * 0.8;
           slab(P, [[ax, ay], [cx - 14, by - 2], [cx - 12, by + 9], [cx - 4, by + 10]], membrane);
-          // 圓耳朵
-          ball(P, hx - 9, hy - 13, 4.2, 4.6, fur);
-          ball(P, hx + 6, hy - 14, 4.2, 4.6, fur);
+          ball(P, hx - 8, hy - 12, 4, 4.4, fur);
+          ball(P, hx + 6, hy - 13, 4, 4.4, fur);
         },
         head: (hx, hy) => {
-          ball(P, hx + 6, hy + 4 * p.sy, 9.5, 7.5, white);
-          ball(P, hx + 13, hy + 4 * p.sy, 1.6, 1.2, '#e8909a', { gloss: 0.6 });
-          // 眼周深色毛
-          P.ellipse(hx + 3.5, hy - 0.5, 4.2, 4.6, '#5a4430', 150);
-          P.ellipse(hx + 13.5, hy - 1, 3.8, 4.2, '#5a4430', 150);
+          ball(P, hx + 6, hy + 4 * p.sy, 9, 7, white);
+          ball(P, hx + 12.5, hy + 4 * p.sy, 1.4, 1.1, '#d8888a');
+          P.ellipse(hx + 3.5, hy - 0.5, 3.8, 4.2, '#5a4430', 120);
+          P.ellipse(hx + 12.5, hy - 1, 3.4, 3.8, '#5a4430', 120);
         },
-        front: (hx, hy) => {
-          // 前面那隻手的滑翔膜
-          const cx = 31 + p.dx, by = 47 + p.bob * 0.7;
+        front: (hx, hy, cx, by) => {
           const ax = cx + p.arm[0] * 0.85, ay = 42 + p.bob * 0.7 + p.arm[1] * 0.8;
           slab(P, [[ax, ay], [cx + 13, by + 2], [cx + 8, by + 10]], membrane);
-          void hx; void hy;
         },
-        eyeX1: 3.5, eyeX2: 13.5, eyeY: -0.5, mouthX: 11, mouthY: 7,
+        eyeX1: 3.5, eyeX2: 12.5, eyeY: -0.5, mouthX: 10.5, mouthY: 6.5,
       });
     },
   },
   lanlan: {
     name: { 'zh-TW': '藍藍', en: 'Lanlan' },
     stats: { speed: 2, jump: 0, power: -1 },
-    themeColor: '#2E6FD8',
-    outline: '#0a1430',
+    themeColor: '#4A82D0',
+    outline: '#14223a',
     draw(P, p) {
-      // 台灣藍鵲：黑頭、紅喙、黃色眼圈、寶藍色身體、長長的藍尾巴帶白色尖端、紅腳
-      const blue = '#2e6fd8', black = '#1c1c28', red = '#e0302a';
+      // 台灣藍鵲：黑頭、紅喙、黃色眼圈、藍色身體、白色尖端的長尾羽、紅腳
+      const blue = '#3a72c0', black = '#2a2a30', red = '#cf3b30';
       creature(P, p, {
-        fur: blue, headColor: black, legColor: red, footColor: red, armColor: blue,
-        iris: '#e8c840', eyeSize: 0.95, brow: '#0a0a12',
-        shade: { gloss: 0.45, shine: 34 },
-        belly: (cx, by) => ball(P, cx + 2, by + 2, 7 * p.sx, 7.5 * p.sy, '#6ea0ec'),
+        fur: blue, headColor: black, legColor: red, footColor: red, armColor: blue, wing: true,
+        legR: 2, footRx: 3.6, iris: '#e8c840', eyeSize: 0.9, brow: '#0a0a12', headR: 13.5, headRy: 12.5,
+        belly: (cx, by) => ball(P, cx + 2, by + 2, 7 * p.sx, 7.5 * p.sy, '#7aa4dc'),
         behind: (hx, hy, cx, by) => {
           const tw = p.tail;
-          // 長尾羽：兩根往後下方延伸，白色尖端
           for (const [dy, len] of [[0, 24], [4, 20]]) {
             const ex = cx - 10 - len, ey = by + 8 + dy + tw * 0.5;
             slab(P, [[cx - 8, by + 4 + dy * 0.5], [ex, ey - 2.4], [ex, ey + 2.4], [cx - 6, by + 8 + dy * 0.5]], blue);
-            slab(P, [[ex + 5, ey - 2.2], [ex - 2, ey - 2.4], [ex - 2, ey + 2.4], [ex + 5, ey + 2.2]], '#ffffff');
+            slab(P, [[ex + 5, ey - 2.2], [ex - 2, ey - 2.4], [ex - 2, ey + 2.4], [ex + 5, ey + 2.2]], '#f6f2ea');
           }
         },
         head: (hx, hy) => {
-          // 紅色的喙
-          slab(P, [[hx + 14, hy - 1 * p.sy], [hx + 24, hy + 2.5 * p.sy], [hx + 14, hy + 5 * p.sy]], red, { gloss: 0.5 });
-          // 黃色眼圈
-          P.ellipse(hx + 6, hy - 1, 3.6, 4.2, '#e8c840');
+          slab(P, [[hx + 12, hy - 1 * p.sy], [hx + 21, hy + 2.5 * p.sy], [hx + 12, hy + 4.5 * p.sy]], red);
+          P.ellipse(hx + 5, hy - 1, 3.4, 3.9, '#e8c840');
         },
-        hand: (x, y) => {
-          // 翅膀尖端的黑白斑
-          ball(P, x + 1, y + 1, 3.6, 3, '#ffffff');
-        },
-        eyeX1: 6, eyeX2: 13.5, eyeY: -1, mouth: false,
+        hand: (x, y) => ball(P, x + 1, y + 1, 3, 2.6, '#f6f2ea'),
+        eyeX1: 5, eyeX2: 12, eyeY: -1, mouth: false,
       });
     },
   },
@@ -556,67 +629,237 @@ const CHARS = {
     name: { 'zh-TW': '月月', en: 'Yueyue' },
     stats: { speed: -2, jump: -1, power: 2 },
     themeColor: '#C8A07A',
-    outline: '#000000',
+    outline: '#0a0808',
     draw(P, p) {
-      // 台灣黑熊：黑色毛（靠高光與背光呈現立體）、胸前白色 V 字月牙、淺褐色口鼻、圓耳
-      const black = '#2a2a34';
+      // 台灣黑熊：黑色毛、胸前白色 V 字月牙、淺褐色口鼻、圓耳
+      const black = '#3a3638';
+      const sh = { shadow: '#20182a', light: '#8a8090' };
       creature(P, p, {
-        fur: black, iris: '#5a3a2a', brow: '#101016', eyeDark: '#08060a',
-        shade: { gloss: 0.3, rim: 0.42, shadow: '#14142a' },
-        headR: 17.5, headRy: 16,
-        belly: (cx, by) => {
-          // 白色 V 字月牙
-          slab(P, [[cx - 7, by - 9], [cx + 1, by - 1], [cx + 10, by - 10], [cx + 10, by - 6.5], [cx + 1, by + 3], [cx - 7, by - 5.5]], '#f4f0e6');
-        },
+        fur: black, shade: sh, brow: '#101016', headR: 16, headRy: 15, bodyRx: 13.5, bodyRy: 12.5,
+        belly: (cx, by) => slab(P, [[cx - 7, by - 9], [cx + 1, by - 1], [cx + 10, by - 10], [cx + 10, by - 6.5], [cx + 1, by + 3], [cx - 7, by - 5.5]], '#ece6d6'),
         behind: (hx, hy) => {
-          ball(P, hx - 11, hy - 12, 5, 5, black, { rim: 0.42 });
-          ball(P, hx + 7, hy - 14, 5, 5, black, { rim: 0.42 });
+          ball(P, hx - 10, hy - 11, 4.8, 4.8, black, sh);
+          ball(P, hx + 7, hy - 13, 4.8, 4.8, black, sh);
         },
         head: (hx, hy) => {
-          ball(P, hx + 10, hy + 6 * p.sy, 8, 6, '#c8a07a');
-          ball(P, hx + 16, hy + 3 * p.sy, 2.6, 2, '#120e10', { gloss: 0.8, shine: 40 });
+          ball(P, hx + 9.5, hy + 6 * p.sy, 7.5, 5.6, '#b89470');
+          ball(P, hx + 15, hy + 3 * p.sy, 2.4, 1.9, '#141012');
         },
-        eyeX1: 4, eyeX2: 12.5, eyeY: -2, mouthX: 13, mouthY: 9.5,
+        eyeX1: 4, eyeX2: 12, eyeY: -2, mouthX: 12.5, mouthY: 9,
       });
     },
   },
   mikado: {
     name: { 'zh-TW': '帝帝', en: 'Mikado' },
     stats: { speed: 0, jump: 1, power: 1 },
-    themeColor: '#6A7AE0',
-    outline: '#080a18',
+    themeColor: '#7080D0',
+    outline: '#0e1028',
     draw(P, p) {
-      // 帝雉（雄鳥）：深藍紫帶金屬光澤的羽毛、紅色臉部肉垂、白色翼斑、長尾羽上的白色橫斑、灰色腳
-      const navy = '#24306a', red = '#d82a2a';
+      // 帝雉：深藍紫羽毛、紅色臉部肉垂、白色翼斑、長尾羽上的白色橫斑
+      const navy = '#2c3566', red = '#c83a30';
       creature(P, p, {
-        fur: navy, legColor: '#8a8a96', footColor: '#8a8a96', armColor: navy,
-        iris: '#5a3a1a', eyeSize: 0.95, brow: '#06060e',
-        shade: { gloss: 0.6, shine: 22, rim: 0.4, shadow: '#120a2a' },
-        belly: (cx, by) => ball(P, cx + 2, by + 1, 7 * p.sx, 8 * p.sy, '#3a4a9a', { gloss: 0.6, shine: 22 }),
+        fur: navy, legColor: '#8a8a92', footColor: '#8a8a92', armColor: navy, wing: true,
+        legR: 2, footRx: 3.6, brow: '#06060e', headR: 13, headRy: 12.5,
+        shade: { shadow: '#140e2a', light: '#8a9ae0' },
+        belly: (cx, by) => ball(P, cx + 2, by + 1, 7 * p.sx, 8 * p.sy, '#3a4888'),
         behind: (hx, hy, cx, by) => {
           const tw = p.tail;
-          // 長尾羽：深藍底＋白色橫斑
           const ex = cx - 34, ey = by + 4 + tw * 0.6;
-          slab(P, [[cx - 8, by - 2], [ex, ey - 3], [ex - 2, ey + 1], [cx - 7, by + 6]], navy, { gloss: 0.6 });
+          slab(P, [[cx - 8, by - 2], [ex, ey - 3], [ex - 2, ey + 1], [cx - 7, by + 6]], navy);
           for (let i = 1; i <= 4; i++) {
             const t = i / 5;
             const x = cx - 8 + (ex - (cx - 8)) * t, y = by + 2 + (ey - (by + 2)) * t;
-            P.line(x, y - 3.2 + t, x - 1, y + 3 - t, '#f2f2f6', 1.1);
+            P.line(x, y - 3.2 + t, x - 1, y + 3 - t, '#f2f0ea', 1.1);
           }
-          // 頭頂短冠羽
-          slab(P, [[hx - 4, hy - 13], [hx - 9, hy - 21], [hx + 1, hy - 15]], navy, { gloss: 0.6 });
+          slab(P, [[hx - 4, hy - 11], [hx - 9, hy - 19], [hx + 1, hy - 13]], navy);
         },
         head: (hx, hy) => {
-          // 紅色臉部肉垂（眼睛周圍）
-          ball(P, hx + 6, hy - 0.5, 5.5, 5.8, red, { gloss: 0.4 });
-          // 小喙
-          slab(P, [[hx + 14, hy + 1 * p.sy], [hx + 21, hy + 3.5 * p.sy], [hx + 14, hy + 6 * p.sy]], '#c8c8b0', { gloss: 0.5 });
+          ball(P, hx + 5.5, hy - 0.5, 5, 5.3, red);
+          slab(P, [[hx + 12, hy + 1 * p.sy], [hx + 19, hy + 3.5 * p.sy], [hx + 12, hy + 6 * p.sy]], '#c8c0a8');
         },
-        hand: (x, y) => {
-          // 白色翼斑
-          P.line(x - 3, y - 1, x + 2, y - 2, '#f2f2f6', 1);
+        hand: (x, y) => P.line(x - 3, y - 1, x + 2, y - 2, '#f2f0ea', 1),
+        eyeX1: 5.5, eyeX2: 12, eyeY: -1, mouth: false,
+      });
+    },
+  },
+  ying: {
+    name: { 'zh-TW': '鷹鷹', en: 'Ying' },
+    stats: { speed: -1, jump: 1, power: 2 },
+    themeColor: '#B08458',
+    outline: '#2a1a0e',
+    draw(P, p) {
+      // 熊鷹（赫氏角鷹）：深褐色羽毛、白色胸口上的褐色橫斑、短冠羽、彎鉤喙、黃色眼睛、黃色爪子
+      const brown = '#8a6440', chest = '#efe6d2', bar = '#6a4a2c';
+      creature(P, p, {
+        fur: brown, armColor: '#7a5636', legColor: chest, footColor: '#e0b840', wing: true,
+        legR: 3, iris: '#e8b830', brow: '#3a2414', headR: 14, headRy: 13,
+        belly: (cx, by) => {
+          ball(P, cx + 3, by + 1, 8 * p.sx, 9 * p.sy, chest);
+          for (let i = 0; i < 4; i++) P.line(cx - 2, by - 4 + i * 3.2, cx + 8, by - 3 + i * 3.2, bar, 0.9);
         },
-        eyeX1: 6, eyeX2: 13.5, eyeY: -1, mouth: false,
+        behind: (hx, hy, cx, by) => {
+          const tw = p.tail;
+          slab(P, [[cx - 9, by + 2], [cx - 19, by + 10 + tw * 0.4], [cx - 16, by + 14 + tw * 0.4], [cx - 6, by + 8]], '#7a5636');
+          // 短冠羽
+          slab(P, [[hx - 6, hy - 9], [hx - 14, hy - 16], [hx - 2, hy - 12]], '#5a3c22');
+        },
+        head: (hx, hy) => {
+          ball(P, hx + 4, hy + 4 * p.sy, 7, 5, '#a88460');
+          // 彎鉤喙
+          slab(P, [[hx + 11, hy - 1 * p.sy], [hx + 18, hy + 1 * p.sy], [hx + 17, hy + 6 * p.sy], [hx + 12, hy + 4 * p.sy]], '#3a3434');
+          ball(P, hx + 11.5, hy, 2.2, 2, '#e0c040');
+        },
+        eyeX1: 4, eyeX2: 10.5, eyeY: -2, mouth: false,
+      });
+    },
+  },
+  meimei: {
+    name: { 'zh-TW': '梅梅', en: 'Meimei' },
+    stats: { speed: 2, jump: 1, power: -2 },
+    themeColor: '#C8844A',
+    outline: '#3a2010',
+    draw(P, p) {
+      // 台灣梅花鹿：栗色身體上的白色梅花斑、小鹿角、大耳朵、溫柔的大眼睛、黑鼻頭、白色臀斑
+      const coat = '#b8743e', spot = '#f4ecd8', cream = '#efe2c8';
+      creature(P, p, {
+        fur: coat, legColor: '#a8683a', footColor: '#4a3428', legR: 2.4, footRx: 3.2, eyeSize: 1.25, brow: '#5a3a1a',
+        headR: 13.5, headRy: 13, headY: 25,
+        belly: (cx, by) => {
+          ball(P, cx + 3, by + 3, 7 * p.sx, 7 * p.sy, cream);
+          for (const [dx, dy] of [[-7, -5], [-3, -8], [1, -6], [-8, 0], [5, -8], [-4, -2]]) ball(P, cx + dx, by + dy, 1.3, 1.1, spot);
+        },
+        behind: (hx, hy, cx, by) => {
+          ball(P, cx - 11, by + 2, 3.6, 4, '#f6f0e4');
+          // 小鹿角
+          for (const [x0, lean] of [[-4, -1], [4, 1]]) {
+            const bx = hx + x0, byy = hy - 12;
+            P.line(bx, byy, bx + lean * 2, byy - 9, '#8a6a48', 1.3);
+            P.line(bx + lean * 1.2, byy - 5, bx + lean * 5, byy - 8, '#8a6a48', 1.1);
+          }
+          // 大耳朵
+          slab(P, [[hx - 10, hy - 6], [hx - 19, hy - 9], [hx - 12, hy - 2]], coat);
+          slab(P, [[hx - 11.5, hy - 5.5], [hx - 17, hy - 7.5], [hx - 12.5, hy - 3.5]], '#e8c8b0');
+        },
+        head: (hx, hy) => {
+          ball(P, hx + 9, hy + 5 * p.sy, 7, 5, cream);
+          ball(P, hx + 15, hy + 3.5 * p.sy, 2, 1.6, '#2a2224');
+        },
+        eyeX1: 3.5, eyeX2: 11, eyeY: -1, mouthX: 12, mouthY: 8,
+      });
+    },
+  },
+  pipi: {
+    name: { 'zh-TW': '琵琵', en: 'Pipi' },
+    stats: { speed: 0, jump: 1, power: -1 },
+    themeColor: '#E8D890',
+    outline: '#2a2a2a',
+    draw(P, p) {
+      // 黑面琵鷺：白色羽毛、黑色的臉、長長的黑色琵琶嘴、黑腳、頭後淡黃色飾羽
+      const white = '#f4f2ec', black = '#26262a';
+      creature(P, p, {
+        fur: white, legColor: black, footColor: black, armColor: '#ecebe4', wing: true, legR: 1.8, footRx: 3.4,
+        headR: 12, headRy: 11.5, headY: 26, eyeSize: 0.9, brow: '#0a0a0a', iris: '#b83a34',
+        shade: { shadow: '#7a7aa0' },
+        behind: (hx, hy, cx, by) => {
+          // 淡黃色飾羽
+          slab(P, [[hx - 8, hy - 6], [hx - 18, hy - 2], [hx - 15, hy + 2], [hx - 7, hy - 1]], '#f0d890');
+          slab(P, [[cx - 9, by - 2], [cx - 16, by + 4], [cx - 9, by + 6]], '#ecebe4');
+        },
+        head: (hx, hy) => {
+          // 黑臉：從嘴基部延伸到眼睛周圍
+          slab(P, [[hx + 4, hy - 2], [hx + 11, hy - 1.5], [hx + 11, hy + 4], [hx + 5, hy + 3.5]], black);
+          // 琵琶嘴：細長、末端扁圓
+          slab(P, [[hx + 10, hy - 0.5], [hx + 23, hy + 1.5], [hx + 23, hy + 3.5], [hx + 10, hy + 3]], black);
+          ball(P, hx + 24.5, hy + 2.5, 3, 2.4, black);
+        },
+        eyeX1: 4, eyeX2: 9.5, eyeY: 0, mouth: false,
+      });
+    },
+  },
+  hoho: {
+    name: { 'zh-TW': '猴猴', en: 'Hoho' },
+    stats: { speed: 1, jump: 2, power: -2 },
+    themeColor: '#B0A090',
+    outline: '#2a2420',
+    draw(P, p) {
+      // 台灣獼猴：灰褐色毛、粉色的臉、圓耳、長尾巴
+      const fur = '#8a8070', face = '#e2b0a0';
+      creature(P, p, {
+        fur, brow: '#4a3a30', eyeSize: 1.05, skin: face,
+        belly: (cx, by) => ball(P, cx + 2, by + 1, 7 * p.sx, 8 * p.sy, '#a89c8a'),
+        behind: (hx, hy, cx, by) => {
+          const tw = p.tail;
+          tube(P, [[cx - 9, by + 5], [cx - 17, by + 2 + tw * 0.4], [cx - 22, by - 8 + tw], [cx - 19, by - 16 + tw]], 2.2, 1.8, fur);
+          ball(P, hx - 13, hy + 1, 3.6, 4, face);
+        },
+        head: (hx, hy) => {
+          // 粉色臉盤（心形）
+          ball(P, hx + 5, hy + 1, 8.5, 9, face);
+          ball(P, hx + 8, hy + 6, 6, 4.6, '#d89e90');
+          P.line(hx - 3, hy - 9, hx + 10, hy - 10, '#6a5e50', 1.6);
+        },
+        eyeX1: 2.5, eyeX2: 9.5, eyeY: 0, mouthX: 8, mouthY: 7.5,
+      });
+    },
+  },
+  shishi: {
+    name: { 'zh-TW': '石石', en: 'Shishi' },
+    stats: { speed: 2, jump: 0, power: 0 },
+    themeColor: '#C8A878',
+    outline: '#2a1e12',
+    draw(P, p) {
+      // 石虎：灰黃褐底色上的黑色斑點、額頭兩條白線、耳背黑色帶白斑、尾巴有環紋、金色眼睛
+      const fur = '#b0946a', spot = '#3a2e24', white = '#f2ece0';
+      creature(P, p, {
+        fur, iris: '#d8a83a', brow: '#3a2a1a',
+        belly: (cx, by) => {
+          ball(P, cx + 3, by + 1, 7.5 * p.sx, 8 * p.sy, white);
+          for (const [dx, dy] of [[-8, -4], [-5, 2], [-9, 5], [6, 6], [-3, -8]]) ball(P, cx + dx, by + dy, 1.4, 1.2, spot);
+        },
+        behind: (hx, hy, cx, by) => {
+          const tw = p.tail;
+          tube(P, [[cx - 9, by + 4], [cx - 18, by + 2 + tw * 0.5], [cx - 22, by - 8 + tw]], 2.8, 2.6, fur);
+          for (const t of [[cx - 15, by + 3], [cx - 19, by + 0 + tw * 0.4], [cx - 21.5, by - 5 + tw * 0.8]]) P.line(t[0], t[1] - 2.5, t[0] + 0.5, t[1] + 2.5, spot, 1.2);
+          // 圓圓的耳朵，耳背黑色帶白斑
+          ball(P, hx - 9, hy - 12, 4.6, 4.8, '#2e2620');
+          ball(P, hx - 9, hy - 12, 1.6, 1.6, white);
+          ball(P, hx + 6, hy - 13, 4.6, 4.8, '#2e2620');
+          ball(P, hx + 6, hy - 13, 1.6, 1.6, white);
+        },
+        head: (hx, hy) => {
+          // 額頭的兩條白線＋黑線
+          P.line(hx + 2, hy - 2, hx + 1, hy - 12, white, 1.1);
+          P.line(hx + 8, hy - 2, hx + 7, hy - 12, white, 1.1);
+          P.line(hx + 5, hy - 4, hx + 4, hy - 13, spot, 1);
+          ball(P, hx + 8, hy + 6.5 * p.sy, 6.5, 4.5, white);
+          ball(P, hx + 9, hy + 3.4 * p.sy, 1.3, 1, '#c87868');
+          for (const [dx, dy] of [[-10, 2], [-7, 7], [13, -3]]) ball(P, hx + dx, hy + dy, 1.2, 1, spot);
+        },
+        eyeY: 0, mouthX: 9, mouthY: 7,
+      });
+    },
+  },
+  caicai: {
+    name: { 'zh-TW': '彩彩', en: 'Caicai' },
+    stats: { speed: 1, jump: 0, power: 0 },
+    themeColor: '#5AA848',
+    outline: '#16281a',
+    draw(P, p) {
+      // 五色鳥（台灣擬啄木）：綠色身體、藍色頭頂與臉、黃色喉嚨、紅色斑點、黑色眼線、粗粗的喙
+      const green = '#5aa848', blue = '#4a8ad8', yellow = '#f0d040', red = '#d8382c';
+      creature(P, p, {
+        fur: green, headColor: blue, armColor: '#4a9840', legColor: '#8a8a7a', footColor: '#8a8a7a', wing: true,
+        legR: 2, footRx: 3.4, headR: 13.5, headRy: 13, eyeSize: 0.95, brow: '#0a0a12',
+        belly: (cx, by) => ball(P, cx + 3, by + 2, 7 * p.sx, 7.5 * p.sy, '#8ac860'),
+        behind: (hx, hy, cx, by) => slab(P, [[cx - 9, by + 2], [cx - 17, by + 8], [cx - 15, by + 11], [cx - 7, by + 7]], '#4a9840'),
+        head: (hx, hy) => {
+          ball(P, hx + 7, hy + 7, 6, 4.4, yellow);
+          ball(P, hx + 2, hy - 9, 3.6, 2.6, red);
+          ball(P, hx + 12, hy + 9, 2, 1.6, red);
+          P.line(hx + 1, hy + 2.6, hx + 12, hy + 1.6, '#1a1a20', 0.8);
+          slab(P, [[hx + 12, hy - 1], [hx + 20, hy + 2], [hx + 12, hy + 5]], '#d8d0b8');
+        },
+        eyeX1: 5, eyeX2: 11.5, eyeY: -1, mouth: false,
       });
     },
   },
@@ -713,8 +956,8 @@ for (const [id, ch] of Object.entries(CHARS)) {
   const sheet = newImg(F * 5, F * ROWS.length);
   ROWS.forEach((row, r) => row.forEach((pose, c) => blit(sheet, drawFrame(ch, pose), c * F, r * F)));
   const dir = join(ROOT, 'characters', id);
-  writeFile(join(dir, 'sprite.png'), encodePng(sheet));
-  writeFile(join(dir, 'portrait.png'), encodePng(drawFrame(ch, { ...base, eyes: 'happy', arm: [16, -6], arm2: [-14, 6] })));
+  writeFile(join(dir, 'sprite.png'), encodePng8(sheet));
+  writeFile(join(dir, 'portrait.png'), encodePng8(drawFrame(ch, { ...base, eyes: 'happy', arm: [16, -6], arm2: [-14, 6] })));
   const manifest = {
     id,
     name: ch.name,

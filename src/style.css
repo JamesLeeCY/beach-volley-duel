@@ -1052,3 +1052,22 @@ input.code-input {
 .touch-controls.layout-right .btn-icon {
   transform: scaleX(-1);
 }
+
+/* 角色變多：手機橫向時小頭像改成一列、可左右滑動，不把「已準備」擠到畫面外 */
+@media (max-height: 420px) {
+  .thumbs {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .thumbs::-webkit-scrollbar {
+    display: none;
+  }
+  .thumbs .thumb {
+    flex: 0 0 auto;
+  }
+}
