@@ -40,6 +40,14 @@ npm run gen:og     # 重新產生連結預覽圖 public/og.jpg
 
 `vite.config.ts` 的 `base: './'` 使用相對路徑，放在任何子路徑都能運作。
 
+### 自動檢查與部署（CI/CD）
+
+| 時機 | 做什麼 |
+| --- | --- |
+| 推到 `main` | 單元測試 → 端對端測試（Chromium＋WebKit）→ 建置 → 部署到 GitHub Pages；任何一步失敗就不部署 |
+| 開 Pull Request 到 `main` | 跑同樣的測試與建置，不部署；結果顯示在 PR 頁面，通過後再合併 |
+| 手動 | Actions → Deploy to GitHub Pages → Run workflow |
+
 ## 線上對戰
 
 - 信令使用 PeerJS 公用伺服器（`0.peerjs.com`），STUN／TURN 使用 PeerJS 預設設定，所以只靠靜態主機就能連線，不需自架後端。
