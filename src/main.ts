@@ -525,7 +525,7 @@ class App {
     if (this.mode !== 'demo') this.startDemo();
     const el = h('div', { class: 'screen transparent', onclick: () => this.showModes() },
       h('h1', {}, t('title')),
-      h('p', { class: 'sub' }, getLang() === 'en' ? '台灣金牌球' : 'Taiwan Gold Volley'),
+      h('p', { class: 'sub' }, getLang() === 'en' ? '台灣金排球' : 'Taiwan Gold Volley'),
       h('p', { class: 'blink' }, t('pressStart')),
     );
     this.show('title', el);

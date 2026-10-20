@@ -1,7 +1,7 @@
 export type Lang = 'zh-TW' | 'en';
 
 const zh = {
-  title: '台灣金牌球',
+  title: '台灣金排球',
   subtitle: '2D 排球對戰',
   pressStart: '點擊或按任意鍵開始',
   vsCpu: '對戰電腦',
