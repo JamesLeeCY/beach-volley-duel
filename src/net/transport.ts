@@ -101,8 +101,11 @@ export class Transport {
 
   private dial() {
     if (!this.peer || this.closed) return;
+    const prev = this.conn;
     const conn = this.peer.connect(PREFIX + this.code, { reliable: true, serialization: 'json' });
     this.bind(conn);
+    // 上一次撥號還沒連通就放棄它，免得房主接受了那條（之後不再理會的）連線而把新的撥號當成滿房
+    if (prev && !prev.open) prev.close();
   }
 
   /** 加入者：斷線後重新連回同一個房間 */
