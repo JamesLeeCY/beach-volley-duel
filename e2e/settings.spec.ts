@@ -6,7 +6,7 @@ import { newPlayer, waitScreen } from './helpers';
 async function openSettings(page: Page) {
   await page.goto('/');
   await waitScreen(page, 'title');
-  await page.locator('#overlay .screen').click();
+  await page.getByRole('button', { name: 'More modes', exact: true }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await waitScreen(page, 'settings');
 }
@@ -103,7 +103,7 @@ test('character pack: drag in a .zip, stored in IndexedDB, local only', async ({
     return r.allCharacters().map((c: { id: string; local?: boolean; sprite: unknown }) => ({ id: c.id, local: !!c.local, sprite: !!c.sprite }));
   });
   expect(chars).toContainEqual({ id: 'e2e-zed', local: true, sprite: true });
-  await page.locator('#overlay .screen').click();
+  await page.getByRole('button', { name: 'More modes', exact: true }).click();
   await page.getByRole('button', { name: 'Practice', exact: true }).click();
   const name = page.locator('.char-panel .name').first();
   for (let i = 0; i < chars.length && (await name.textContent()) !== 'Zed'; i++) {

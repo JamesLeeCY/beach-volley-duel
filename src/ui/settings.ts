@@ -32,6 +32,10 @@ export interface Settings {
   showFps: boolean;
   /** 手把按鍵對應 */
   padMap: PadMap;
+  /** 打過第一場了（第一場用最簡單的電腦，並在場上顯示操作提示） */
+  firstMatchDone: boolean;
+  /** 上次選的角色：標題畫面按「開始」直接用這個角色 */
+  lastChar: string;
 }
 
 export const KEYS_VERSION = 2;
@@ -59,6 +63,8 @@ export function defaultSettings(): Settings {
     ball: 'classic',
     showFps: false,
     padMap: { jump: [...DEFAULT_PAD_MAP.jump], hit: [...DEFAULT_PAD_MAP.hit] },
+    firstMatchDone: false,
+    lastChar: '',
   };
 }
 
@@ -84,7 +90,12 @@ export function loadSettings(): Settings {
       const keys: [KeyMap, KeyMap] = raw2
         ? migrateKeys([sanitizeKeymap(raw2[0], fb[0]), sanitizeKeymap(raw2[1], fb[1])], version)
         : d.keys;
-      return { ...d, ...saved, keys, keysVersion: KEYS_VERSION, padMap: sanitizePadMap(saved?.padMap) };
+      return {
+        ...d, ...saved, keys, keysVersion: KEYS_VERSION, padMap: sanitizePadMap(saved?.padMap),
+        // 舊版就有存檔的玩家不是新手，不再出現第一場的提示
+        firstMatchDone: saved?.firstMatchDone !== false,
+        lastChar: typeof saved?.lastChar === 'string' ? saved.lastChar : '',
+      };
     }
   } catch {
     // 無痕模式等情況：使用預設值

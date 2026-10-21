@@ -9,7 +9,10 @@ import { sceneThumb } from './render/thumbs';
 import { SCENES, type SceneId } from './render/scenery';
 import { audio } from './audio/audio';
 import type { MusicId } from './audio/music';
-import { TUTORIAL_STEPS, Tutorial } from './ui/tutorial';
+import { TUTORIAL_STEPS, Tutorial, type TutorialStep } from './ui/tutorial';
+import { Coach } from './ui/coach';
+import { beats, dareUrl, headline, lineShareUrl, parseDare, stripLinkParams, type Dare } from './ui/dare';
+import type { ShareInfo } from './ui/sharecard';
 import { clearErrors, errorEntries, installErrorLog, issueUrl, recordError } from './ui/errorlog';
 import { STAGE_COUNT, STAGE_DIFFS, STAGE_SCENES, STAGE_TARGET, buildStages, loadBest, saveBest } from './ui/challenge';
 import {
@@ -88,6 +91,11 @@ class App {
   private tutorialEl: HTMLDivElement | null = null;
   challenge: { player: string; stages: string[]; idx: number } | null = null;
   ball: BallSkin = 'classic';
+  /** 從挑戰連結開始的比賽：要打贏的比分 */
+  dare: Dare | null = null;
+  /** 第一場比賽的場上提示 */
+  coach: Coach | null = null;
+  private coachEl: HTMLDivElement | null = null;
   private touchSeen = false;
   private needRefresh: ((reload?: boolean) => Promise<void>) | null = null;
 
@@ -124,10 +132,21 @@ class App {
       if (document.hidden && this.isLocalMatch() && !this.paused) this.showPause();
     });
 
-    const room = new URLSearchParams(location.search).get('room');
+    // 邀請連結（?room=房號）直接進房；挑戰連結（?vs=…）直接進挑戰畫面
+    const params = new URLSearchParams(location.search);
+    const room = params.get('room');
     const code = room ? normalizeCode(room) : null;
-    if (code) this.showOnlineJoin(code);
-    else this.showTitle();
+    const dare = parseDare(location.search, {
+      char: (id) => hasCharacter(id) && !getCharacter(id).local,
+      scenes: SCENES,
+    });
+    if (params.has('vs')) history.replaceState(null, '', stripLinkParams(location.href));
+    if (code) this.showOnlineJoin(code, true);
+    else if (dare) this.showDare(dare);
+    else {
+      this.showTitle();
+      if (params.has('vs')) this.toast(t('dareInvalid'), [], 4000);
+    }
 
     this.setupPwa();
     this.maybeIosHint();
@@ -290,6 +309,10 @@ class App {
     this.state = step(this.state, in1, in2, this.cfg);
     this.handleEvents(this.state.events, false);
     if (this.tutorial && this.tutorial.update(this.state, this.state.events)) this.onTutorialStep();
+    if (this.coach) {
+      const r = this.coach.update(this.state, this.state.events);
+      if (r) this.renderCoach(r === 'done');
+    }
     if (this.state.phase === Phase.Over && this.state.phaseTimer === 0 && !this.resultShown) {
       if (this.mode === 'demo') this.startDemo();
       else this.showResult(this.state.winner);
@@ -427,10 +450,6 @@ class App {
       else this.showPause();
       return;
     }
-    if (this.screenName === 'title') {
-      this.showModes();
-      return;
-    }
     const a = menuAction(code);
     if (a) this.menuInput(a, keymapSide(code));
   }
@@ -490,10 +509,6 @@ class App {
       const edge = v & ~this.padPrev[i];
       this.padPrev[i] = v;
       if (!edge) continue;
-      if (this.screenName === 'title') {
-        this.showModes();
-        return;
-      }
       const side = i as 0 | 1;
       if (edge & 1) this.menuInput('left', side);
       if (edge & 2) this.menuInput('right', side);
@@ -521,14 +536,36 @@ class App {
     this.overlay.replaceChildren();
   }
 
+  /** 標題：一個「開始」直接和電腦打，其他玩法收在「更多玩法」 */
   showTitle() {
     if (this.mode !== 'demo') this.startDemo();
-    const el = h('div', { class: 'screen transparent', onclick: () => this.showModes() },
+    const el = h('div', { class: 'screen transparent title-screen' },
       h('h1', {}, t('title')),
       h('p', { class: 'sub' }, getLang() === 'en' ? '台灣金排球' : 'Taiwan Gold Volley'),
-      h('p', { class: 'blink' }, t('pressStart')),
+      h('div', { class: 'menu' },
+        button(`▶ ${t('start')}`, () => this.quickStart(), 'primary big'),
+        button(t('moreModes'), () => this.showModes(), 'secondary'),
+      ),
+      h('p', { class: 'help' }, t('quickHint')),
     );
     this.show('title', el);
+  }
+
+  /** 標題畫面的「開始」：用上次的角色（或預設角色）和隨機對手直接開打 */
+  quickStart() {
+    audio.unlock();
+    this.endTutorial();
+    this.challenge = null;
+    this.dare = null;
+    const me = hasCharacter(this.settings.lastChar) ? this.settings.lastChar : DEFAULT_CHARACTER;
+    const others = allCharacters().filter((c) => c.id !== me && !c.local);
+    this.chars = [me, others[(Math.random() * others.length) | 0]?.id ?? me];
+    this.humanSide = 0;
+    const first = !this.settings.firstMatchDone;
+    // 第一場：最簡單的電腦、5 分短賽，邊打邊教
+    if (first) this.difficulty = 'beginner';
+    this.startLocalMatch('cpu', first ? { target: 5 } : {});
+    if (first) this.startCoach();
   }
 
   showModes() {
@@ -617,6 +654,9 @@ class App {
     }
     const finish = () => {
       this.chars = [list[slots[0].idx].id, list[slots[1].idx].id];
+      this.dare = null;
+      this.settings.lastChar = this.chars[mode === 'local' ? 0 : this.humanSide];
+      saveSettings(this.settings);
       if (mode === 'challenge') this.startChallenge(this.chars[0]);
       else this.startLocalMatch(mode);
     };
@@ -1052,7 +1092,9 @@ class App {
   private quitToModes() {
     this.paused = false;
     this.endTutorial();
+    this.endCoach();
     this.challenge = null;
+    this.dare = null;
     if (this.online) {
       this.online.close();
       this.online = null;
@@ -1063,6 +1105,13 @@ class App {
 
   private showResult(winner: number) {
     this.resultShown = true;
+    const firstDone = !!this.coach;
+    if (firstDone) {
+      // 第一場（邊打邊教）打完了：之後按「開始」就是一般比賽
+      this.endCoach();
+      this.settings.firstMatchDone = true;
+      saveSettings(this.settings);
+    }
     if (this.challenge && this.mode === 'cpu') {
       this.showStageResult(winner === this.humanSide);
       return;
@@ -1076,46 +1125,120 @@ class App {
         this.online?.requestRematch();
         againBtn.disabled = true;
         againBtn.textContent = t('waitRematch');
+      } else if (this.dare) {
+        this.startDare(this.dare);
       } else {
         this.startLocalMatch(this.mode as 'cpu' | 'local' | 'practice');
       }
     };
     const againBtn = button(t('rematch'), again, 'primary');
-    const el = h('div', { class: 'screen' },
+    const share = this.resultShare(winner);
+    // 挑戰連結記錄這場實際的難度後，下一場電腦再升一級（入門 → 簡單）
+    if (firstDone && this.difficulty === 'beginner') this.difficulty = 'easy';
+    let dareLine: HTMLElement | null = null;
+    if (this.dare && this.mode === 'cpu') {
+      const mine = share.mine;
+      const fmt = (s: readonly [number, number]) => `${s[0]}:${s[1]}`;
+      const won = beats(mine, this.dare.score);
+      dareLine = h('p', { class: `dare-line ${won ? 'ok' : ''}` },
+        t(won ? 'dareBeat' : 'dareMiss', { mine: fmt(mine), theirs: fmt(this.dare.score) }));
+    }
+    const el = h('div', { class: 'screen result-screen' },
       h('h2', {}, title),
       h('p', { class: 'code', style: 'letter-spacing:2px' }, `${this.state.score[0]} - ${this.state.score[1]}`),
-      h('div', { class: 'menu' }, againBtn, this.shareButton(title), button(t('toTitle'), () => this.quitToModes(), 'secondary')),
+      dareLine,
+      // 矮螢幕（手機橫向）時戰績卡在左、按鈕在右
+      h('div', { class: 'result-body' },
+        share.preview,
+        h('div', { class: 'result-actions' },
+          h('div', { class: 'menu' }, againBtn),
+          share.buttons,
+          h('div', { class: 'menu row' },
+            this.mode === 'cpu' ? button(t('changeLook'), () => {
+              this.dare = null;
+              this.showCharSelect('cpu');
+            }, 'secondary small') : null,
+            button(t('toTitle'), () => this.quitToModes(), 'secondary small'),
+          ),
+        ),
+      ),
     );
     this.show('result', el, () => this.quitToModes());
   }
 
-  /** 結算畫面的「分享戰績」：產生 1200×630 的戰績圖，手機用系統分享、電腦下載 */
-  private shareButton(result: string) {
-    const btn = button(t('shareResult'), async () => {
-      btn.disabled = true;
+  /**
+   * 結算畫面的分享區：戰績卡預覽、「LINE 挑戰朋友」、「分享戰績圖」、「複製連結」。
+   * 戰績卡與文字都以玩家自己的角度寫（「我用石虎 7:3 打爆台灣黑熊」），
+   * 連結是挑戰連結：朋友點開就是同一組對戰，要打出比這更好的比分。
+   */
+  private resultShare(winner: number, resultText?: string) {
+    const o = this.online;
+    // 自己是哪一邊；同機雙人以贏的一方為主角
+    const meSide = this.mode === 'online' && o ? o.localSide : this.mode === 'local' ? winner : this.humanSide;
+    const self = this.mode !== 'local';
+    const mine: [number, number] = [this.state.score[meSide], this.state.score[1 - meSide]];
+    const ids = [this.chars[meSide], this.chars[1 - meSide]];
+    const packs = ids.map((id) => getCharacter(id));
+    const names = packs.map((p) => displayName(p, getLang()));
+    const line = headline(getLang(), names[0], names[1], mine, self);
+    const base = `${location.origin}${location.pathname}`;
+    const target = this.mode === 'online' && o?.info ? o.info.rules.targetScore : this.cfg.targetScore;
+    // 只有正常打完、雙方都是內建角色時才產生挑戰連結（朋友那邊沒有匯入的角色）
+    const canDare = (this.mode === 'cpu' || this.mode === 'online') && Math.max(...mine) >= target && mine[0] !== mine[1]
+      && packs.every((p) => !p.local);
+    const link = canDare
+      ? dareUrl(base, {
+        me: ids[0], opp: ids[1], scene: this.scene, score: mine, target,
+        level: this.mode === 'online' ? 'hard' : this.difficulty,
+      })
+      : base;
+    const text = canDare ? t('dareShareText', { headline: line, url: link }) : `${line}\n${link}`;
+    const info: ShareInfo = {
+      title: t('title'),
+      result: resultText ?? line,
+      headline: line,
+      cta: canDare ? t('dareCta') : undefined,
+      text,
+      score: mine,
+      players: packs.map((p, i) => ({ name: names[i], portrait: p.portrait, color: p.manifest.themeColor })),
+      sceneId: this.scene,
+      sceneName: t(App.SCENE_LABELS[this.scene]),
+      url: link,
+    };
+    // 戰績卡預覽（在背景產生，產生好之前分享按鈕會自己產生一次）
+    const preview = h('div', { class: 'card-preview' });
+    let canvas: HTMLCanvasElement | undefined;
+    void import('./ui/sharecard').then(async ({ renderShareCard }) => {
+      canvas = await renderShareCard(info);
+      const img = h('img', { src: canvas.toDataURL('image/jpeg', 0.85), alt: line });
+      preview.replaceChildren(img);
+    }).catch((err) => recordError('error', err));
+    const imgBtn = button(t('shareCard'), async () => {
+      imgBtn.disabled = true;
       try {
         const { shareCard } = await import('./ui/sharecard');
-        const players = this.chars.map((id) => {
-          const pack = getCharacter(id);
-          return { name: displayName(pack, getLang()), portrait: pack.portrait, color: pack.manifest.themeColor };
-        });
-        const outcome = await shareCard({
-          title: t('title'),
-          result,
-          score: [this.state.score[0], this.state.score[1]],
-          players,
-          sceneId: this.scene,
-          sceneName: t(App.SCENE_LABELS[this.scene]),
-          url: `${location.origin}${location.pathname}`,
-        });
+        const outcome = await shareCard(info, canvas);
         if (outcome === 'downloaded') this.toast(t('imageSaved'), [], 2500);
       } catch (err) {
         recordError('error', err);
       } finally {
-        btn.disabled = false;
+        imgBtn.disabled = false;
       }
-    }, 'secondary');
-    return btn;
+    }, 'secondary small');
+    const copyBtn = button(t('copyLink'), async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        this.toast(t('copied'), [], 1800);
+      } catch {
+        // 不允許寫入剪貼簿
+      }
+    }, 'secondary small');
+    const buttons = h('div', { class: 'menu row share-row' },
+      button(t('lineChallenge'), () => window.open(lineShareUrl(text), '_blank', 'noopener'), 'line small'),
+      imgBtn,
+      copyBtn,
+    );
+    return { preview, buttons, mine, link, text };
   }
 
   // ---------------------------------------------------------------- 新手教學
@@ -1134,7 +1257,10 @@ class App {
   }
 
   private tutorialText(i: number) {
-    const step = TUTORIAL_STEPS[i];
+    return this.stepText(TUTORIAL_STEPS[i]);
+  }
+
+  private stepText(step: TutorialStep) {
     const m = KEYMAP_1P;
     const k = (a: KeyAction) => m[a].map(keyLabel).join('/') || '—';
     const vars = { l: k('left'), r: k('right'), u: k('up'), d: k('down'), h: k('hit') };
@@ -1177,6 +1303,81 @@ class App {
     this.tutorial = null;
     this.tutorialEl?.remove();
     this.tutorialEl = null;
+  }
+
+  // ---------------------------------------------------------------- 第一場的場上提示
+  private startCoach() {
+    this.endCoach();
+    this.coach = new Coach(this.state);
+    this.coachEl = h('div', { class: 'coach' });
+    $('#app').append(this.coachEl);
+    this.renderCoach(false);
+  }
+
+  /** 顯示目前這句提示；剛做到上一步時先閃一下「很好！」 */
+  private renderCoach(good: boolean) {
+    const el = this.coachEl;
+    const c = this.coach;
+    if (!el || !c) return;
+    const show = () => {
+      if (this.coachEl !== el) return;
+      const cur = c.current;
+      if (!cur) {
+        this.endCoach();
+        return;
+      }
+      el.classList.remove('good');
+      el.replaceChildren(h('span', { class: 'coach-tag' }, t('coachTag')), h('span', {}, this.stepText(cur)));
+    };
+    if (good) {
+      audio.blip(true);
+      el.classList.add('good');
+      el.replaceChildren(h('span', {}, `✔ ${t('coachGood')}`));
+      setTimeout(show, 900);
+    } else {
+      show();
+    }
+  }
+
+  private endCoach() {
+    this.coach = null;
+    this.coachEl?.remove();
+    this.coachEl = null;
+  }
+
+  // ---------------------------------------------------------------- 挑戰連結
+  /** 朋友分享的挑戰：顯示對戰組合與要打贏的比分，一個按鈕就開打 */
+  showDare(d: Dare) {
+    if (this.mode !== 'demo') this.startDemo();
+    // 背景先換成挑戰的場景
+    this.scene = d.scene;
+    audio.setMusic(SCENE_MUSIC[d.scene] ?? 'bright');
+    const packs = [getCharacter(d.me), getCharacter(d.opp)];
+    const s = `${d.score[0]}:${d.score[1]}`;
+    const face = (p: CharacterPack) => (p.portrait ? h('img', { src: p.portrait, class: 'stage-portrait', alt: '' }) : null);
+    const el = h('div', { class: 'screen' },
+      h('h2', {}, t('dareTitle')),
+      h('div', { class: 'dare-vs' }, face(packs[0]), h('b', {}, 'VS'), face(packs[1])),
+      h('p', { class: 'sub' }, t('dareText', { me: displayName(packs[0], getLang()), opp: displayName(packs[1], getLang()), s })),
+      h('p', {}, t('dareGoal', { scene: t(App.SCENE_LABELS[d.scene]), s })),
+      h('div', { class: 'menu' },
+        button(`▶ ${t('dareAccept')}`, () => this.startDare(d), 'primary big'),
+        button(t('moreModes'), () => this.showModes(), 'secondary'),
+      ),
+    );
+    this.show('dare', el, () => this.showModes());
+  }
+
+  private startDare(d: Dare) {
+    audio.unlock();
+    this.endTutorial();
+    this.challenge = null;
+    this.dare = d;
+    this.chars = [d.me, d.opp];
+    this.humanSide = 0;
+    this.difficulty = d.level;
+    this.startLocalMatch('cpu', { target: d.target, scene: d.scene });
+    if (!this.settings.firstMatchDone) this.startCoach();
   }
 
   // ---------------------------------------------------------------- 闖關挑戰
@@ -1227,15 +1428,21 @@ class App {
       audio.play('win');
     }
     const cleared = won && c.idx >= STAGE_COUNT;
-    const el = h('div', { class: 'screen' },
+    const share = this.resultShare(won ? this.humanSide : 1 - this.humanSide);
+    const el = h('div', { class: 'screen result-screen' },
       h('h2', {}, cleared ? t('challengeClear') : won ? t('stageWin') : t('stageLose')),
       h('p', { class: 'code', style: 'letter-spacing:2px' }, `${this.state.score[0]} - ${this.state.score[1]}`),
       cleared ? h('p', { class: 'sub' }, t('challengeClearText')) : null,
       h('p', {}, t('challengeBest', { n: loadBest(), total: STAGE_COUNT })),
-      h('div', { class: 'menu' },
-        cleared ? null : button(won ? t('nextStage') : t('tryAgain'), () => (won ? this.showStageIntro() : this.startStage()), 'primary'),
-        this.shareButton(cleared ? t('challengeClear') : won ? t('stageWin') : t('stageLose')),
-        button(t('toTitle'), () => this.quitToModes(), cleared ? 'primary' : 'secondary'),
+      h('div', { class: 'result-body' },
+        share.preview,
+        h('div', { class: 'result-actions' },
+          h('div', { class: 'menu' },
+            cleared ? null : button(won ? t('nextStage') : t('tryAgain'), () => (won ? this.showStageIntro() : this.startStage()), 'primary'),
+          ),
+          share.buttons,
+          h('div', { class: 'menu row' }, button(t('toTitle'), () => this.quitToModes(), cleared ? 'primary' : 'secondary small')),
+        ),
       ),
     );
     this.show('result', el, () => this.quitToModes());
@@ -1378,31 +1585,36 @@ class App {
 
   private onRoomCode(code: string) {
     const link = `${location.origin}${location.pathname}?room=${code}`;
+    const text = t('inviteText', { url: link });
     const copyBtn = button(t('shareLink'), async () => {
       try {
-        if (navigator.share && isTouchDevice()) await navigator.share({ title: t('title'), url: link });
-        else await navigator.clipboard.writeText(link);
+        if (navigator.share && isTouchDevice()) await navigator.share({ title: t('title'), text });
+        else await navigator.clipboard.writeText(text);
         copyBtn.textContent = t('copied');
       } catch {
         // 使用者取消
       }
-    }, 'primary');
+    }, 'secondary');
     const el = h('div', { class: 'screen' },
       h('h2', {}, t('roomCode')),
       h('div', { class: 'code' }, code),
       h('p', { style: 'word-break:break-all;font-size:12px' }, link),
-      h('div', { class: 'menu' }, copyBtn),
+      // 朋友點開連結就直接進這一間房，不用輸入房號
+      h('div', { class: 'menu' },
+        button(t('lineInvite'), () => window.open(lineShareUrl(text), '_blank', 'noopener'), 'line'),
+        copyBtn,
+      ),
       h('p', { class: 'blink' }, t('waitingOpponent')),
       h('div', { class: 'menu row' }, button(t('back'), () => this.leaveOnline(), 'secondary')),
     );
     this.show('room', el, () => this.leaveOnline());
   }
 
-  async showOnlineJoin(code: string) {
+  async showOnlineJoin(code: string, invited = false) {
     const el = h('div', { class: 'screen' },
       h('h2', {}, t('joinRoom')),
       h('div', { class: 'code' }, code),
-      h('p', { class: 'blink' }, t('connecting')),
+      h('p', { class: 'blink' }, invited ? t('invited') : t('connecting')),
       h('div', { class: 'menu row' }, button(t('back'), () => this.leaveOnline(), 'secondary')),
     );
     this.show('room', el, () => this.leaveOnline());

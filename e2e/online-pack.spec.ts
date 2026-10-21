@@ -30,7 +30,7 @@ test('online: opponent sees my imported character (pack sent over the connection
 
   await host.goto('/');
   await waitScreen(host, 'title');
-  await host.locator('#overlay .screen').click();
+  await host.getByRole('button', { name: 'More modes', exact: true }).click();
   await host.getByRole('button', { name: 'Online', exact: true }).click();
   await host.getByRole('button', { name: 'Create room', exact: true }).click();
   const codeEl = host.locator('#overlay .code');

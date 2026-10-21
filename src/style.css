@@ -1071,3 +1071,134 @@ input.code-input {
     flex: 0 0 auto;
   }
 }
+
+/* ---------- 標題「開始」、LINE 分享、戰績卡、第一場提示 ---------- */
+button.big {
+  font-size: clamp(20px, 4.5vw, 28px);
+  padding: 12px 36px;
+}
+
+button.line {
+  background: #06c755;
+  border-color: #04a144;
+  color: #fff;
+}
+
+.title-screen .menu {
+  min-width: 240px;
+  max-width: 320px;
+}
+
+.result-screen .card-preview {
+  margin: 8px auto 0;
+  width: min(100%, 420px);
+  aspect-ratio: 1200 / 630;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.result-screen .card-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.share-row {
+  margin-top: 8px;
+}
+
+.dare-line {
+  color: var(--text) !important;
+  font-weight: 700;
+}
+
+.dare-line.ok {
+  color: var(--ok) !important;
+}
+
+.dare-vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.dare-vs img:last-child {
+  transform: scaleX(-1);
+}
+
+.coach {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 44px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: min(92vw, 520px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(12, 28, 52, 0.85);
+  border: 2px solid var(--accent);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  pointer-events: none;
+  animation: coach-pop 0.25s ease-out;
+}
+
+.coach.good {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.coach-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1d3557;
+  white-space: nowrap;
+}
+
+@keyframes coach-pop {
+  from {
+    transform: translateX(-50%) scale(0.85);
+    opacity: 0;
+  }
+}
+
+@media (max-height: 420px) {
+  .coach {
+    top: calc(env(safe-area-inset-top) + 30px);
+    font-size: 13px;
+    padding: 5px 12px;
+  }
+  .result-screen .code {
+    font-size: 26px;
+    margin: 0;
+  }
+  .result-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .result-screen .card-preview {
+    flex: 0 0 min(44vw, 320px);
+    margin: 0;
+  }
+  .result-actions {
+    flex: 1;
+  }
+  .result-actions .menu {
+    margin-top: 6px;
+    min-width: 0;
+  }
+  button.big {
+    padding: 8px 28px;
+  }
+}
