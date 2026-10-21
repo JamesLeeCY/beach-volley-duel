@@ -1,6 +1,7 @@
 import type { Speed } from '../engine/constants';
 import { detectLang, type Lang } from '../i18n';
 import type { SceneId } from '../render/scenery';
+import type { Difficulty } from '../engine/ai';
 import type { BallSkin } from '../render/renderer';
 import { DEFAULT_PAD_MAP, sanitizePadMap, type PadMap } from '../input/gamepad';
 import { cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, LEGACY_KEYMAPS, sanitizeKeymap, type KeyMap } from '../input/keyboard';
@@ -36,6 +37,12 @@ export interface Settings {
   firstMatchDone: boolean;
   /** 上次選的角色：標題畫面按「開始」直接用這個角色 */
   lastChar: string;
+  /** 對戰電腦時站哪一邊（收在設定頁，選單不再多一步） */
+  cpuSide: 0 | 1;
+  /** 對戰電腦的難度（選角畫面下方可改，會記住） */
+  difficulty: Difficulty;
+  /** 打完幾場：前幾場顯示按鍵提示與觸控按鈕文字 */
+  matchesPlayed: number;
 }
 
 export const KEYS_VERSION = 2;
@@ -65,6 +72,9 @@ export function defaultSettings(): Settings {
     padMap: { jump: [...DEFAULT_PAD_MAP.jump], hit: [...DEFAULT_PAD_MAP.hit] },
     firstMatchDone: false,
     lastChar: '',
+    cpuSide: 0,
+    difficulty: 'beginner',
+    matchesPlayed: 0,
   };
 }
 
@@ -95,6 +105,10 @@ export function loadSettings(): Settings {
         // 舊版就有存檔的玩家不是新手，不再出現第一場的提示
         firstMatchDone: saved?.firstMatchDone !== false,
         lastChar: typeof saved?.lastChar === 'string' ? saved.lastChar : '',
+        cpuSide: saved?.cpuSide === 1 ? 1 : 0,
+        difficulty: ['beginner', 'easy', 'normal', 'hard'].includes(saved?.difficulty) ? saved.difficulty : 'easy',
+        // 舊版存檔沒有這個欄位：當成老玩家，不再顯示新手提示
+        matchesPlayed: Number.isFinite(saved?.matchesPlayed) ? saved.matchesPlayed : 99,
       };
     }
   } catch {

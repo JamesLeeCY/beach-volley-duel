@@ -42,12 +42,12 @@ test('online: opponent sees my imported character (pack sent over the connection
   await waitScreen(guest, 'onlineChar');
   await waitScreen(host, 'onlineChar');
   // 房客在自己的面板點選匯入的角色
-  await guest.locator('.char-panel').nth(1).locator('button.thumb[title="Zippy"]').click();
+  await guest.locator('.cell[data-id="zippy"]').click();
 
   // 房主收到角色包後，清單裡會出現 Zippy（並已選取在房客的面板）
   const hasZippy = () => host.evaluate(async () => (await import('/src/characters/registry.ts' as string)).hasCharacter('zippy'));
   await expect.poll(hasZippy, { timeout: 15_000 }).toBe(true);
-  await expect(host.locator('.char-panel').nth(1).locator('button.thumb[title="Zippy"]')).toHaveClass(/sel/);
+  await expect(host.locator('.cell[data-id="zippy"]')).toHaveClass(/p2/);
 
   for (const p of [host, guest]) await p.getByRole('button', { name: 'Ready', exact: true }).click();
   for (const p of [host, guest]) await p.waitForFunction(() => (window as any).app?.onlineStarted === true, null, { timeout: 15_000 });

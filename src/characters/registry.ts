@@ -12,10 +12,16 @@ export const ManifestSchema = z.object({
   frameSize: z.tuple([z.number().int().positive(), z.number().int().positive()]),
   animations: z.object({ idle: Anim }).catchall(Anim),
   hitbox: z.object({ w: z.number(), h: z.number() }).optional(),
-  stats: z.object({ speed: Stat, jump: Stat, power: Stat }).catch({ speed: 0, jump: 0, power: 0 }),
+  stats: z.object({ speed: Stat, jump: Stat, power: Stat, dive: Stat.optional() }).catch({ speed: 0, jump: 0, power: 0 }),
   sfx: z.record(z.string(), z.string()).optional(),
   portrait: z.string().optional(),
   themeColor: z.string().default('#cccccc'),
+  /** 物種名稱（例如「白面鼯鼠」） */
+  species: z.record(z.string(), z.string()).optional(),
+  /** 隱藏角色：解鎖前不能選 */
+  hidden: z.boolean().optional(),
+  /** 每個動畫列、每一幀的頭部位置 [x, 頭頂 y, 半徑]（64 單位），用來畫造型；null = 這一幀不畫 */
+  heads: z.array(z.array(z.tuple([z.number(), z.number(), z.number()]).nullable())).optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;
@@ -31,7 +37,7 @@ export interface CharacterPack {
   local?: boolean;
 }
 
-export const DEFAULT_CHARACTER = 'goldie';
+export const DEFAULT_CHARACTER = 'shishi';
 
 function fnv(text: string): string {
   let h = 0x811c9dc5;
@@ -99,8 +105,8 @@ export async function loadCharacters(base = './characters/'): Promise<CharacterP
   if (!packs.size) {
     // 連預設角色都載入失敗：建立純色佔位角色，確保不會當機
     const m = ManifestSchema.parse({
-      id: DEFAULT_CHARACTER, name: { 'zh-TW': '金金', en: 'Goldie' }, sprite: '', frameSize: [64, 64],
-      animations: { idle: { row: 0, frames: 1, fps: 1 } }, themeColor: '#E2A93B',
+      id: DEFAULT_CHARACTER, name: { 'zh-TW': '石石', en: 'Shishi' }, sprite: '', frameSize: [64, 64],
+      animations: { idle: { row: 0, frames: 1, fps: 1 } }, themeColor: '#C8A878',
     });
     packs.set(m.id, { id: m.id, manifest: m, sprite: null, portrait: null, hash: '0' });
   }

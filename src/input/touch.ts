@@ -70,6 +70,11 @@ export class TouchControls {
     this.hitBtn.append(this.aimRing, this.aimKnob, this.el('btn-icon hit-icon'));
     this.jumpBtn = this.el('touch-btn touch-jump');
     this.jumpBtn.append(this.el('btn-icon jump-icon'));
+    // 新手前幾場在按鈕下方顯示「跳」「擊球」文字（setLabels）
+    this.jumpLabel = this.el('btn-label');
+    this.hitLabel = this.el('btn-label');
+    this.jumpBtn.append(this.jumpLabel);
+    this.hitBtn.append(this.hitLabel);
     actions.append(this.jumpBtn, this.hitBtn);
     // 動作感應區：右半邊（或互換後左半邊）
     this.actionZone = this.el('touch-action-zone');
@@ -249,6 +254,16 @@ export class TouchControls {
     this.root.style.setProperty('--touch-opacity', String(s.touchOpacity));
     this.root.classList.toggle('swapped', this.swapped);
     this.resetStick();
+  }
+
+  private jumpLabel: HTMLDivElement;
+  private hitLabel: HTMLDivElement;
+
+  /** 按鈕上的文字標籤；傳 null 隱藏 */
+  setLabels(labels: [string, string] | null) {
+    this.jumpLabel.textContent = labels?.[0] ?? '';
+    this.hitLabel.textContent = labels?.[1] ?? '';
+    this.root.classList.toggle('labeled', !!labels);
   }
 
   setVisible(v: boolean) {

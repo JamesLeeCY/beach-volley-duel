@@ -1,0 +1,183 @@
+{
+  "source": "TaiCOL 臺灣物種名錄 https://taicol.tw",
+  "license": "CC BY 4.0",
+  "fetched": "2026-10-21",
+  "species": {
+    "yueyue": {
+      "query": "Ursus thibetanus formosanus",
+      "taxonId": "t0086413",
+      "scientificName": "Ursus thibetanus formosanus",
+      "commonName": "臺灣黑熊",
+      "endemic": true,
+      "protected": "I",
+      "redlist": "NEN",
+      "iucn": null,
+      "cites": null
+    },
+    "shishi": {
+      "query": "Prionailurus bengalensis chinensis",
+      "taxonId": "t0105762",
+      "scientificName": "Prionailurus bengalensis euptilurus",
+      "commonName": "石虎",
+      "endemic": false,
+      "protected": "I",
+      "redlist": "NEN",
+      "iucn": null,
+      "cites": null
+    },
+    "meimei": {
+      "query": "Cervus nippon taiouanus",
+      "taxonId": "t0085426",
+      "scientificName": "Cervus nippon taiouanus",
+      "commonName": "臺灣梅花鹿",
+      "endemic": true,
+      "protected": null,
+      "redlist": "NA",
+      "iucn": null,
+      "cites": null
+    },
+    "hoho": {
+      "query": "Macaca cyclopis",
+      "taxonId": "t0068195",
+      "scientificName": "Macaca cyclopis",
+      "commonName": "臺灣獼猴",
+      "endemic": true,
+      "protected": null,
+      "redlist": "NLC",
+      "iucn": "LC",
+      "cites": "II"
+    },
+    "glidey": {
+      "query": "Petaurista lena",
+      "taxonId": "t0086085",
+      "scientificName": "Petaurista lena",
+      "commonName": "白面鼯鼠",
+      "endemic": true,
+      "protected": null,
+      "redlist": "NLC",
+      "iucn": null,
+      "cites": null
+    },
+    "jiajia": {
+      "query": "Manis pentadactyla pentadactyla",
+      "taxonId": "t0085879",
+      "scientificName": "Manis pentadactyla pentadactyla",
+      "commonName": "臺灣穿山甲",
+      "endemic": true,
+      "protected": "II",
+      "redlist": "NVU",
+      "iucn": null,
+      "cites": null
+    },
+    "tata": {
+      "query": "Lutra lutra",
+      "taxonId": "t0096231",
+      "scientificName": "Lutra lutra",
+      "commonName": "歐亞水獺",
+      "endemic": false,
+      "protected": "I",
+      "redlist": "NCR",
+      "iucn": "NT",
+      "cites": "I"
+    },
+    "baobao": {
+      "query": "Neofelis nebulosa brachyura",
+      "taxonId": "t0085962",
+      "scientificName": "Neofelis nebulosa brachyura",
+      "commonName": "臺灣雲豹",
+      "endemic": true,
+      "protected": "I",
+      "redlist": "RE",
+      "iucn": null,
+      "cites": null
+    },
+    "mikado": {
+      "query": "Syrmaticus mikado",
+      "taxonId": "t0046527",
+      "scientificName": "Syrmaticus mikado",
+      "commonName": "黑長尾雉",
+      "endemic": true,
+      "protected": "II",
+      "redlist": "NLC",
+      "iucn": "LC",
+      "cites": "I"
+    },
+    "lanlan": {
+      "query": "Urocissa caerulea",
+      "taxonId": "t0048427",
+      "scientificName": "Urocissa caerulea",
+      "commonName": "臺灣藍鵲",
+      "endemic": true,
+      "protected": "III",
+      "redlist": "NLC",
+      "iucn": "LC",
+      "cites": null
+    },
+    "caicai": {
+      "query": "Psilopogon nuchalis",
+      "taxonId": "t0037193",
+      "scientificName": "Psilopogon nuchalis",
+      "commonName": "五色鳥",
+      "endemic": true,
+      "protected": null,
+      "redlist": "NLC",
+      "iucn": "LC",
+      "cites": null
+    },
+    "ying": {
+      "query": "Nisaetus nipalensis",
+      "taxonId": "t0098063",
+      "scientificName": "Nisaetus nipalensis",
+      "commonName": "熊鷹",
+      "endemic": false,
+      "protected": "I",
+      "redlist": "NVU",
+      "iucn": "NT",
+      "cites": "II"
+    },
+    "pipi": {
+      "query": "Platalea minor",
+      "taxonId": "t0035964",
+      "scientificName": "Platalea minor",
+      "commonName": "黑面琵鷺",
+      "endemic": false,
+      "protected": "I",
+      "redlist": "NVU",
+      "iucn": "VU",
+      "cites": null
+    },
+    "wawa": {
+      "query": "Rhacophorus arvalis",
+      "taxonId": "t0028607",
+      "scientificName": "Zhangixalus arvalis",
+      "commonName": "諸羅樹蛙",
+      "endemic": true,
+      "protected": "II",
+      "redlist": "NEN",
+      "iucn": "EN",
+      "cites": null
+    },
+    "sakura": {
+      "query": "Oncorhynchus formosanus",
+      "taxonId": "t0031284",
+      "scientificName": "Oncorhynchus masou formosanus",
+      "commonName": "臺灣櫻花鉤吻鮭",
+      "endemic": true,
+      "protected": "I",
+      "redlist": "NNT",
+      "iucn": "CR",
+      "cites": null
+    },
+    "guigui": {
+      "query": "Chelonia mydas",
+      "taxonId": "t0030385",
+      "scientificName": "Chelonia mydas",
+      "commonName": "綠蠵龜",
+      "endemic": false,
+      "protected": "I",
+      "redlist": null,
+      "iucn": "LC",
+      "cites": "I"
+    }
+  }
+}

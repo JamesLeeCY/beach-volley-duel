@@ -3,12 +3,13 @@ import * as C from '../engine/constants';
 import { Phase, PState, type GameEvent, type GameState, type PlayerState } from '../engine/types';
 import { Scenery, type SceneId } from './scenery';
 import { animOf, type AnimName, type CharacterPack } from '../characters/registry';
+import { paintBoba, paintHat, paintMelon } from './extras';
 
 const FP = C.FP;
 const W = C.FIELD_W;
 const H = C.FIELD_H;
 
-export type BallSkin = 'classic' | 'red' | 'blue' | 'ultra';
+export type BallSkin = 'classic' | 'red' | 'blue' | 'ultra' | 'melon' | 'boba';
 
 /** 排球配色：底色、兩種色塊、縫線、外框 */
 export const BALL_SKINS: Record<BallSkin, { base: string; a: string; b: string; seam: string; outline: string }> = {
@@ -16,6 +17,9 @@ export const BALL_SKINS: Record<BallSkin, { base: string; a: string; b: string; 
   red: { base: '#ffffff', a: '#e53935', b: '#ffffff', seam: '#5c1a1a', outline: '#3a1212' },
   blue: { base: '#ffffff', a: '#2f6fe0', b: '#e53935', seam: '#1a2c5c', outline: '#14204a' },
   ultra: { base: '#ffffff', a: '#2a2a2e', b: '#f6c625', seam: '#111114', outline: '#111114' },
+  // 每日挑戰的特殊球（也可在設定中選）
+  melon: { base: '#4a9a3a', a: '', b: '', seam: '', outline: '#1e4a1a' },
+  boba: { base: '#ffffff', a: '', b: '', seam: '', outline: '#6a4a3a' },
 };
 
 /** 畫一顆排球（遊戲中與選單預覽共用） */
@@ -24,6 +28,17 @@ export function paintBall(ctx: CanvasRenderingContext2D, x: number, y: number, R
   ctx.save();
   ctx.translate(x, y + (squash ? 4 : 0));
   if (squash) ctx.scale(1.2, 0.8);
+  if (skin === 'melon' || skin === 'boba') {
+    if (skin === 'melon') paintMelon(ctx, R, angle);
+    else paintBoba(ctx, R, angle);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = pal.outline;
+    ctx.beginPath();
+    ctx.arc(0, 0, R - 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   ctx.beginPath();
   ctx.arc(0, 0, R, 0, Math.PI * 2);
   ctx.fillStyle = pal.base;
@@ -85,6 +100,10 @@ export interface View {
   smooth: boolean;
   ball: BallSkin;
   scene: SceneId;
+  /** 兩位角色頭上的造型（null = 沒有） */
+  hats?: [string | null, string | null];
+  /** 夜市燈光變暗（每日挑戰的特殊規則）：只有球與角色附近是亮的 */
+  night?: boolean;
 }
 
 interface Particle {
@@ -267,7 +286,7 @@ export class Renderer {
       const x = mx(lerp(prev.players[i].x, p.x));
       const y = lerp(prev.players[i].y, p.y);
       const facing = view.mirror ? -p.facing : p.facing;
-      this.drawPlayer(view.chars[i], p, x, y, facing, time, i === 1 && view.hueShift2, i);
+      this.drawPlayer(view.chars[i], p, x, y, facing, time, i === 1 && view.hueShift2, i, view.hats?.[i] ?? null);
     }
 
     // 球與拖尾
@@ -304,6 +323,10 @@ export class Renderer {
     ctx.globalAlpha = 1;
 
     this.scenery.drawOverlay(ctx, time, -this.offX, -this.offY, W + this.offX, H + this.offY);
+    if (view.night) {
+      const pts = [0, 1].map((i) => ({ x: mx(lerp(prev.players[i].x, cur.players[i].x)), y: lerp(prev.players[i].y, cur.players[i].y) }));
+      this.drawNight(time, bx, by, pts);
+    }
 
     // 比分
     const s0 = cur.score[view.mirror ? 1 : 0];
@@ -389,7 +412,54 @@ export class Renderer {
     }
   }
 
-  private drawPlayer(pack: CharacterPack, p: PlayerState, x: number, y: number, facing: number, time: number, hue: boolean, who: number) {
+  /** 夜市燈光：整個畫面壓暗，球、兩位角色與幾盞攤販燈附近是亮的 */
+  private nightCanvas: HTMLCanvasElement | null = null;
+
+  private drawNight(time: number, bx: number, by: number, players: { x: number; y: number }[]) {
+    const c = (this.nightCanvas ??= document.createElement('canvas'));
+    if (c.width !== this.canvas.width || c.height !== this.canvas.height) {
+      c.width = this.canvas.width;
+      c.height = this.canvas.height;
+    }
+    const g = c.getContext('2d')!;
+    const k = this.canvas.width / this.viewW;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, c.width, c.height);
+    g.setTransform(k, 0, 0, k, this.offX * k, this.offY * k);
+    g.fillStyle = 'rgba(6,8,28,0.72)';
+    g.fillRect(-this.offX, -this.offY, this.viewW, this.viewH);
+    g.globalCompositeOperation = 'destination-out';
+    const hole = (x: number, y: number, r: number, a: number) => {
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(0,0,0,${a})`);
+      grad.addColorStop(0.6, `rgba(0,0,0,${a * 0.6})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    };
+    hole(bx, by, 46, 1);
+    for (const p of players) hole(p.x, p.y, 52, 0.9);
+    // 攤販的燈（微微閃爍）
+    for (const [i, x] of [40, 150, 282, 392].entries()) hole(x, 120, 34 + Math.sin(time * 0.004 + i) * 3, 0.55);
+    g.globalCompositeOperation = 'source-over';
+    // 燈泡
+    for (const x of [40, 150, 282, 392]) {
+      g.fillStyle = 'rgba(255,214,120,0.95)';
+      g.beginPath();
+      g.arc(x, 112, 2.6, 0, Math.PI * 2);
+      g.fill();
+    }
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(c, 0, 0);
+    ctx.restore();
+  }
+
+  private drawPlayer(
+    pack: CharacterPack, p: PlayerState, x: number, y: number, facing: number, time: number, hue: boolean, who: number,
+    hat: string | null = null,
+  ) {
     const ctx = this.ctx;
     let { name, frame } = this.animFor(p);
     // 反應動作只在一般站立／跳躍時顯示，且角色包要有這個動畫（匯入的角色包可能沒有）
@@ -420,6 +490,9 @@ export class Renderer {
     ctx.translate(Math.round(x * 4) / 4, Math.round(y * 4) / 4);
     if (facing < 0) ctx.scale(-1, 1);
     ctx.drawImage(img, idx * fw, anim.row * fh, fw, fh, -32, -32, 64, 64);
+    // 造型：角色包有記錄這一幀的頭部位置才畫
+    const head = hat ? pack.manifest.heads?.[anim.row]?.[idx] : null;
+    if (hat && head) paintHat(ctx, hat, head[0] - 32, head[1] - 32, head[2]);
     ctx.restore();
   }
 

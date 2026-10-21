@@ -28,7 +28,7 @@ export default defineConfig({
       // Safari／iPhone 的核心：引擎決定性、觸控、設定（線上對戰的 WebRTC 只在 Chromium 跑）
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: ['determinism.spec.ts', 'touch.spec.ts', 'settings.spec.ts', 'share.spec.ts'],
+      testMatch: ['determinism.spec.ts', 'touch.spec.ts', 'settings.spec.ts', 'share.spec.ts', 'roster.spec.ts'],
     },
   ],
   webServer: [

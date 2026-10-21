@@ -27,6 +27,8 @@ export interface Stats {
   speed: number;
   jump: number;
   power: number;
+  /** 魚躍救球（-2～2，可省略）：撲得更遠、起身更快 */
+  dive?: number;
 }
 
 export interface MatchConfig {
@@ -35,6 +37,8 @@ export interface MatchConfig {
   /** 平衡模式開啟時忽略能力值 */
   balance: boolean;
   stats: [Stats, Stats];
+  /** 橫向風力（FP／幀²，每 5 秒換方向）；0 或省略＝無風 */
+  wind?: number;
 }
 
 export interface PlayerState {

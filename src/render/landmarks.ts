@@ -8,14 +8,14 @@ import { HORIZON, SHORE, rng, ridge } from './scenery';
 
 type G = CanvasRenderingContext2D;
 
-function skyGradient(g: G, L: number, T: number, R: number, stops: [number, string][]) {
+export function skyGradient(g: G, L: number, T: number, R: number, stops: [number, string][]) {
   const sky = g.createLinearGradient(0, Math.min(T, -40), 0, HORIZON + 2);
   for (const [o, c] of stops) sky.addColorStop(o, c);
   g.fillStyle = sky;
   g.fillRect(L, T, R - L, HORIZON + 2 - T);
 }
 
-function sunGlow(g: G, L: number, T: number, R: number, x: number, y: number, r: number, c: string, a: number) {
+export function sunGlow(g: G, L: number, T: number, R: number, x: number, y: number, r: number, c: string, a: number) {
   const glow = g.createRadialGradient(x, y, 0, x, y, r);
   glow.addColorStop(0, `rgba(${c},${a})`);
   glow.addColorStop(0.12, `rgba(${c},${a * 0.7})`);
@@ -25,7 +25,7 @@ function sunGlow(g: G, L: number, T: number, R: number, x: number, y: number, r:
 }
 
 /** 地面：漸層＋細顆粒（磚、石、木的質感由呼叫端另外加） */
-function ground(g: G, L: number, R: number, B: number, top: string, mid: string, bottom: string, seed: number) {
+export function ground(g: G, L: number, R: number, B: number, top: string, mid: string, bottom: string, seed: number) {
   const grad = g.createLinearGradient(0, SHORE, 0, B);
   grad.addColorStop(0, top);
   grad.addColorStop(0.12, mid);
@@ -40,7 +40,7 @@ function ground(g: G, L: number, R: number, B: number, top: string, mid: string,
 }
 
 /** 磚面：交錯排列的磚縫 */
-function brickLines(g: G, L: number, R: number, B: number, color: string) {
+export function brickLines(g: G, L: number, R: number, B: number, color: string) {
   g.strokeStyle = color;
   g.lineWidth = 0.5;
   let row = 0;
@@ -60,7 +60,7 @@ function brickLines(g: G, L: number, R: number, B: number, color: string) {
 }
 
 /** 木棧板：橫向木板＋少量釘痕 */
-function planks(g: G, L: number, R: number, B: number, color: string) {
+export function planks(g: G, L: number, R: number, B: number, color: string) {
   g.strokeStyle = color;
   g.lineWidth = 0.6;
   for (let y = SHORE + 5, h = 4.5; y < B; y += h, h *= 1.1) {
@@ -71,7 +71,7 @@ function planks(g: G, L: number, R: number, B: number, color: string) {
   }
 }
 
-function birds(ctx: G, time: number, L: number, R: number, y0: number, color: string, count = 5) {
+export function birds(ctx: G, time: number, L: number, R: number, y0: number, color: string, count = 5) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 0.8;
   for (let i = 0; i < count; i++) {
@@ -87,7 +87,7 @@ function birds(ctx: G, time: number, L: number, R: number, y0: number, color: st
   }
 }
 
-function sparkles(ctx: G, time: number, L: number, R: number, cx: number, color: string, count: number, gain: number) {
+export function sparkles(ctx: G, time: number, L: number, R: number, cx: number, color: string, count: number, gain: number) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < count; i++) {

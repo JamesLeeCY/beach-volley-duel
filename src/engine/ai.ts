@@ -6,7 +6,8 @@ import { spikeVelocity } from './physics';
 import { Rng } from './rng';
 import { IN_DOWN, IN_HIT, IN_LEFT, IN_RIGHT, IN_UP, Phase, PState, type GameState, type InputFrame } from './types';
 
-export type Difficulty = 'beginner' | 'easy' | 'normal' | 'hard';
+/** rookie 只用在闖關第 1 關（不出現在難度選單） */
+export type Difficulty = 'rookie' | 'beginner' | 'easy' | 'normal' | 'hard';
 
 interface Profile {
   reaction: number; // 幾幀重新規劃一次
@@ -19,6 +20,8 @@ interface Profile {
 }
 
 const PROFILES: Record<Difficulty, Profile> = {
+  // 新手：比入門更慢、更常判斷錯，給第一次打闖關的玩家
+  rookie: { reaction: 18, noise: 52, spikeRate: 0, missRate: 58, deadzone: 16, aggression: 0, moveRate: 42 },
   // 入門：反應慢、常判斷錯、幾乎不扣殺，適合小朋友或第一次玩
   beginner: { reaction: 14, noise: 40, spikeRate: 8, missRate: 45, deadzone: 14, aggression: 0, moveRate: 55 },
   easy: { reaction: 10, noise: 28, spikeRate: 30, missRate: 30, deadzone: 10, aggression: 10, moveRate: 70 },

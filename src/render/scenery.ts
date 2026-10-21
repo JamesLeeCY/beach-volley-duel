@@ -4,22 +4,23 @@
 // - comet 彗星之夜：滿天星斗與銀河、拖著兩道尾巴並分裂出碎片的彗星、流星、倒映星光的山中湖泊。
 // - taipei 信義夜景、zoo 木柵動物園：見 cityzoo.ts。
 // - ntu 台大椰林大道、songshan 松菸大巨蛋、expo 圓山花博、yangming 陽明山溫泉、tamsui 淡水夕陽：見 landmarks.ts。
+// - kinmen 金門、wuling 武陵：見 islands.ts。
 // 靜態部分預先畫進離屏畫布（依裝置解析度），每幀只畫會動的雲、波光、星星、流星與光點。
 
 
-export type SceneId = 'beach' | 'lake' | 'comet' | 'taipei' | 'zoo' | 'ntu' | 'songshan' | 'expo' | 'yangming' | 'tamsui';
-export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui'];
+export type SceneId = 'beach' | 'lake' | 'comet' | 'taipei' | 'zoo' | 'ntu' | 'songshan' | 'expo' | 'yangming' | 'tamsui' | 'kinmen' | 'wuling';
+export const SCENES: SceneId[] = ['beach', 'lake', 'comet', 'taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui', 'kinmen', 'wuling'];
 
 type Painter = (g: CanvasRenderingContext2D, L: number, T: number, R: number, B: number) => void;
 type Animator = (ctx: CanvasRenderingContext2D, time: number, L: number, R: number) => void;
 
 /** 景點場景（台北系列）：第一次用到時才下載，減少首次載入的大小 */
-const LANDMARK_IDS = new Set<SceneId>(['taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui']);
+const LANDMARK_IDS = new Set<SceneId>(['taipei', 'zoo', 'ntu', 'songshan', 'expo', 'yangming', 'tamsui', 'kinmen', 'wuling']);
 let LANDMARKS: Partial<Record<SceneId, { paint: Painter; draw: Animator }>> | null = null;
 let landmarksLoading: Promise<void> | null = null;
 
 export function loadLandmarks(): Promise<void> {
-  landmarksLoading ??= Promise.all([import('./cityzoo'), import('./landmarks')]).then(([c, l]) => {
+  landmarksLoading ??= Promise.all([import('./cityzoo'), import('./landmarks'), import('./islands')]).then(([c, l, i]) => {
     LANDMARKS = {
       taipei: { paint: c.paintTaipei, draw: c.drawTaipei },
       zoo: { paint: c.paintZoo, draw: c.drawZoo },
@@ -28,6 +29,8 @@ export function loadLandmarks(): Promise<void> {
       expo: { paint: l.paintExpo, draw: l.drawExpo },
       yangming: { paint: l.paintYangming, draw: l.drawYangming },
       tamsui: { paint: l.paintTamsui, draw: l.drawTamsui },
+      kinmen: { paint: i.paintKinmen, draw: i.drawKinmen },
+      wuling: { paint: i.paintWuling, draw: i.drawWuling },
     };
   });
   return landmarksLoading;
@@ -45,7 +48,7 @@ function paintPlaceholder(g: CanvasRenderingContext2D, L: number, T: number, R: 
 }
 
 /** 白天場景用光點＋鏡頭光斑；其他場景用色調（multiply）＋光點顏色（null = 不放光點） */
-const DAY_SCENES = new Set<SceneId>(['beach', 'zoo', 'ntu', 'expo']);
+const DAY_SCENES = new Set<SceneId>(['beach', 'zoo', 'ntu', 'expo', 'kinmen', 'wuling']);
 const TINTS: Partial<Record<SceneId, { tint: string; motes: string | null }>> = {
   lake: { tint: 'rgb(255,226,214)', motes: '255,220,150' },
   comet: { tint: 'rgb(178,186,236)', motes: '190,255,170' },

@@ -4,12 +4,12 @@ import { writeFileSync } from 'node:fs';
 import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
 
-const server = await createServer({ server: { port: 5198, strictPort: true }, logLevel: 'error' });
+const server = await createServer({ server: { port: Number(process.env.OG_PORT) || 5198, strictPort: true }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
-  await page.goto('http://localhost:5198/');
+  await page.goto(`http://localhost:${server.config.server.port}/`);
   await page.waitForFunction(() => window.app?.screenName === 'title');
   const dataUrl = await page.evaluate(async () => {
     const m = await import('/src/ui/sharecard.ts');
@@ -18,13 +18,13 @@ try {
       result: '',
       score: [0, 0],
       players: [
-        { name: '金金', portrait: './characters/goldie/portrait.png', color: '#E2A93B' },
-        { name: '橘子', portrait: './characters/kiki/portrait.png', color: '#F08A3C' },
+        { name: '石石', portrait: './characters/shishi/portrait.png', color: '#C8A878' },
+        { name: '月月', portrait: './characters/yueyue/portrait.png', color: '#C8A07A' },
       ],
       sceneId: 'beach',
-      sceneName: '電腦對戰・同機雙人・線上對戰・10 個台灣場景',
+      sceneName: '16 種臺灣動物・12 個臺灣場景・每日挑戰・環島巡迴賽',
       url: 'https://jamesleecy.github.io/beach-volley-duel/',
-      tagline: ['2D 排球對戰網頁遊戲', '免安裝，手機、電腦都能玩'],
+      tagline: ['臺灣動物排球對戰', '免安裝，手機、電腦都能玩'],
     });
     return c.toDataURL('image/jpeg', 0.88);
   });

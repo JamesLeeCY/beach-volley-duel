@@ -7,13 +7,14 @@ import { STAGE_COUNT, STAGE_DIFFS, buildStages } from '../src/ui/challenge';
 import { TUTORIAL_STEPS, Tutorial } from '../src/ui/tutorial';
 
 describe('闖關挑戰', () => {
-  it('6 關：其他角色依序上場，最後一關是鏡像對決，難度遞增', () => {
-    const all = ['kiki', 'goldie', 'glidey', 'lanlan', 'yueyue', 'mikado'];
+  it('6 關：第 1 關是梅梅，其他角色依序上場，最後一關是鏡像對決，難度遞增', () => {
+    const all = ['shishi', 'meimei', 'glidey', 'lanlan', 'yueyue', 'mikado'];
     const st = buildStages('glidey', all);
     expect(st).toHaveLength(STAGE_COUNT);
-    expect(st.slice(0, 5)).toEqual(['kiki', 'goldie', 'lanlan', 'yueyue', 'mikado']);
+    expect(st.slice(0, 5)).toEqual(['meimei', 'shishi', 'lanlan', 'yueyue', 'mikado']);
     expect(st[5]).toBe('glidey');
-    expect(STAGE_DIFFS[0]).toBe('beginner');
+    expect(buildStages('meimei', all)[0]).toBe('shishi');
+    expect(STAGE_DIFFS[0]).toBe('rookie');
     expect(STAGE_DIFFS[5]).toBe('hard');
   });
 

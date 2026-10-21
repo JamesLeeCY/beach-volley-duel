@@ -10,7 +10,8 @@
     "test": "vitest run",
     "gen:assets": "node scripts/gen-assets.mjs",
     "gen:og": "node scripts/gen-og.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "fetch:taicol": "node scripts/fetch-taicol.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

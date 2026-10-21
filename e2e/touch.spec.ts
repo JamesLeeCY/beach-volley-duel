@@ -8,7 +8,7 @@ async function phone(browser: import('@playwright/test').Browser) {
   await page.goto('/');
   await page.waitForFunction(() => (window as any).app?.screenName === 'title');
   await app(page, (a) => {
-    a.chars = ['goldie', 'kiki'];
+    a.chars = ['shishi', 'meimei'];
     a.startLocalMatch('practice');
   });
   await expect(page.locator('.touch-controls').first()).toHaveClass(/visible/);

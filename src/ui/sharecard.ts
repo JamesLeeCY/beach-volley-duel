@@ -168,3 +168,82 @@ export async function shareCard(info: ShareInfo, canvas?: HTMLCanvasElement): Pr
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   return 'downloaded';
 }
+
+export interface CertificateInfo {
+  title: string;
+  name: string;
+  portrait: string | null;
+  color: string;
+  stations: { name: string; done: boolean }[];
+  footer: string;
+  url: string;
+}
+
+/** 環島證書：1200×630，左邊是角色，右邊是 12 站的章（3 排 × 4 個） */
+export async function renderCertificate(info: CertificateInfo): Promise<HTMLCanvasElement> {
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d')!;
+  // 紙張底色＋邊框
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#fbf3df');
+  bg.addColorStop(1, '#f1e2bf');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#b8862e';
+  g.lineWidth = 10;
+  roundRect(g, 24, 24, W - 48, H - 48, 28);
+  g.stroke();
+  g.lineWidth = 2;
+  roundRect(g, 40, 40, W - 80, H - 80, 20);
+  g.stroke();
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  outlined(g, info.title, W / 2, 100, 52, '#ffc531');
+  // 角色
+  const img = info.portrait ? await loadImg(info.portrait) : null;
+  g.fillStyle = 'rgba(255,255,255,0.7)';
+  g.beginPath();
+  g.arc(240, 320, 130, 0, Math.PI * 2);
+  g.fill();
+  g.lineWidth = 6;
+  g.strokeStyle = info.color;
+  g.stroke();
+  if (img) {
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, 125, 205, 230, 230);
+  }
+  outlined(g, info.name, 240, 485, 40, '#ffffff');
+  // 12 個章
+  info.stations.forEach((st, i) => {
+    const col = i % 4, row = Math.floor(i / 4);
+    const x = 520 + col * 160, y = 210 + row * 135;
+    g.lineWidth = 4;
+    g.strokeStyle = st.done ? '#c8302a' : 'rgba(120,100,70,0.35)';
+    g.fillStyle = st.done ? 'rgba(200,48,42,0.1)' : 'rgba(255,255,255,0.4)';
+    g.beginPath();
+    g.arc(x, y, 48, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    if (st.done) {
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(x, y, 40, 0, Math.PI * 2);
+      g.stroke();
+      g.font = `900 30px ${FONT}`;
+      g.fillStyle = '#c8302a';
+      g.fillText('🏐', x, y - 8);
+    }
+    g.font = `700 17px ${FONT}`;
+    g.fillStyle = st.done ? '#7a1e1a' : 'rgba(90,70,50,0.6)';
+    g.fillText(st.name, x, y + (st.done ? 22 : 0), 140);
+  });
+  g.font = `700 22px ${FONT}`;
+  g.fillStyle = '#6a4a2a';
+  g.fillText(info.footer, W / 2, H - 78);
+  g.font = `700 18px ${FONT}`;
+  g.fillStyle = 'rgba(90,70,50,0.7)';
+  g.fillText(info.url.replace(/^https?:\/\//, '').replace(/\?.*$/, ''), W / 2, H - 52);
+  return c;
+}

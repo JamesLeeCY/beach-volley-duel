@@ -59,7 +59,7 @@ test('key rebinding: capture a new key, persist it, use it in game', async ({ br
 });
 
 function packZip(id: string, name: string) {
-  const dir = 'public/characters/goldie/';
+  const dir = 'public/characters/shishi/';
   const manifest = { ...JSON.parse(readFileSync(dir + 'manifest.json', 'utf8')), id, name: { en: name, 'zh-TW': name } };
   return zipSync({
     [`${id}/manifest.json`]: strToU8(JSON.stringify(manifest)),
@@ -88,7 +88,7 @@ test('character pack: drag in a .zip, stored in IndexedDB, local only', async ({
   await dropFile(page, new Uint8Array([1, 2, 3]), 'broken.zip');
   await expect(page.locator('#pack-status')).toHaveText('Import failed: not a zip file');
   // 不能覆蓋內建角色
-  await dropFile(page, packZip('goldie', 'Fake'), 'goldie.zip');
+  await dropFile(page, packZip('shishi', 'Fake'), 'shishi.zip');
   await expect(page.locator('#pack-status')).toContainText('built-in');
 
   await dropFile(page, packZip('e2e-zed', 'Zed'), 'zed.zip');
@@ -105,11 +105,9 @@ test('character pack: drag in a .zip, stored in IndexedDB, local only', async ({
   expect(chars).toContainEqual({ id: 'e2e-zed', local: true, sprite: true });
   await page.getByRole('button', { name: 'More modes', exact: true }).click();
   await page.getByRole('button', { name: 'Practice', exact: true }).click();
-  const name = page.locator('.char-panel .name').first();
-  for (let i = 0; i < chars.length && (await name.textContent()) !== 'Zed'; i++) {
-    await page.locator('.char-panel').first().getByRole('button', { name: '▶' }).click();
-  }
-  await expect(name).toHaveText('Zed');
+  // 匯入的角色排在 4×4 圖鑑格子下面的「匯入」那一排
+  await page.locator('.cell[data-id="e2e-zed"]').click();
+  await expect(page.locator('.char-info .name').first()).toHaveText('Zed');
 
   // 另一個瀏覽器環境看不到
   const other = await newPlayer(browser);

@@ -42,6 +42,10 @@ jobs:
           name: e2e-results
           path: test-results
       - run: npm run build
+        env:
+          # 成效追蹤（選用）：在 repo 的 Settings → Secrets and variables → Actions → Variables 設定，沒設定就不追蹤
+          VITE_PLAUSIBLE_DOMAIN: ${{ vars.PLAUSIBLE_DOMAIN }}
+          VITE_GOATCOUNTER: ${{ vars.GOATCOUNTER }}
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

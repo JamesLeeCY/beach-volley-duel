@@ -30,7 +30,7 @@ test('title: one tap starts a coached first match vs a beginner CPU, then a chal
   await waitScreen(page, 'title');
   await page.getByRole('button', { name: '▶ Start' }).click();
 
-  expect(await app(page, (a) => [a.mode, a.difficulty, a.cfg.targetScore, a.chars[0]])).toEqual(['cpu', 'beginner', 5, 'goldie']);
+  expect(await app(page, (a) => [a.mode, a.difficulty, a.cfg.targetScore, a.chars[0]])).toEqual(['cpu', 'beginner', 5, 'shishi']);
   const coach = page.locator('.coach');
   await expect(coach).toContainText('First match');
   // 往右走：第一句提示（移動）完成，閃一下「Nice!」後換成下一句
@@ -50,7 +50,7 @@ test('title: one tap starts a coached first match vs a beginner CPU, then a chal
   expect(opened).toHaveLength(1);
   const text = decodeURIComponent(opened[0].replace('https://line.me/R/share?text=', ''));
   expect(text).toContain('crushed');
-  expect(text).toMatch(/\?vs=[a-z]+&as=goldie&scene=beach&score=5-1&lv=beginner&to=5/);
+  expect(text).toMatch(/\?vs=[a-z]+&as=shishi&scene=beach&score=5-1&lv=beginner&to=5/);
 
   // 第二次按「開始」就是一般比賽，沒有提示
   await page.getByRole('button', { name: 'Title', exact: true }).click();

@@ -70,9 +70,9 @@ export class OnlineMatch {
   private pendingHashes = new Map<number, number>();
   private advantageTicks = 0;
   stalled = 0;
-  localChar = 'goldie';
+  localChar = 'shishi';
   localReady = false;
-  remoteChar = 'goldie';
+  remoteChar = 'shishi';
   remoteReady = false;
   wantRematch = false;
   remoteRematch = false;

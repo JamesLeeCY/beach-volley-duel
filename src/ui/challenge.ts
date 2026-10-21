@@ -3,13 +3,19 @@ import type { Difficulty } from '../engine/ai';
 import type { SceneId } from '../render/scenery';
 
 export const STAGE_COUNT = 6;
-export const STAGE_DIFFS: Difficulty[] = ['beginner', 'easy', 'easy', 'normal', 'normal', 'hard'];
+// 第 1 關用比入門更慢的「新手」電腦：梅梅腳很快，用入門也能追到很多球
+export const STAGE_DIFFS: Difficulty[] = ['rookie', 'easy', 'easy', 'normal', 'normal', 'hard'];
 export const STAGE_SCENES: SceneId[] = ['beach', 'zoo', 'ntu', 'expo', 'tamsui', 'taipei'];
 export const STAGE_TARGET = 5;
 
-/** 對手順序：其他角色依序上場，不夠 6 位時最後一關是「鏡像對決」（同角色） */
+/** 第 1 關的對手：梅梅（梅花鹿） */
+export const FIRST_OPPONENT = 'meimei';
+
+/** 對手順序：第 1 關是梅梅，其他角色依序上場，不夠 6 位時最後一關是「鏡像對決」（同角色） */
 export function buildStages(player: string, all: string[]): string[] {
-  const others = all.filter((id) => id !== player);
+  const rest = all.filter((id) => id !== player);
+  const first = rest.includes(FIRST_OPPONENT) ? [FIRST_OPPONENT] : [];
+  const others = [...first, ...rest.filter((id) => id !== FIRST_OPPONENT)];
   const out = others.slice(0, STAGE_COUNT - 1);
   while (out.length < STAGE_COUNT) out.push(out.length === STAGE_COUNT - 1 ? player : others[out.length % Math.max(1, others.length)] ?? player);
   return out;

@@ -115,7 +115,8 @@ function updatePlayer(s: GameState, i: number, input: InputFrame, cfg: MatchConf
     case PState.Normal:
       if (hitEdge && dir !== 0) {
         p.state = PState.Dive;
-        p.vx = dir * scaled(C.DIVE_VX, st.speed);
+        // 魚躍：速度影響撲出去的距離；dive（救球型角色）再加遠一點、起身更快
+        p.vx = dir * scaled(scaled(C.DIVE_VX, st.speed), (st.dive ?? 0) * 3);
         p.vy = C.DIVE_VY;
         p.facing = dir;
         emit(s, 'dive', i, p.x, p.y);
@@ -168,7 +169,7 @@ function updatePlayer(s: GameState, i: number, input: InputFrame, cfg: MatchConf
       p.vy = 0;
       if (p.state === PState.Dive) {
         p.state = PState.Lying;
-        p.timer = C.DIVE_RECOVER_FRAMES;
+        p.timer = C.DIVE_RECOVER_FRAMES - trunc((C.DIVE_RECOVER_FRAMES * (st.dive ?? 0) * 15) / 100);
         p.vx = 0;
       } else {
         p.state = PState.Normal;
@@ -179,11 +180,13 @@ function updatePlayer(s: GameState, i: number, input: InputFrame, cfg: MatchConf
 }
 
 /** 移動球並處理牆、天花板、網子。回傳是否落地。 */
-function moveBall(s: GameState): boolean {
+function moveBall(s: GameState, cfg: MatchConfig): boolean {
   const b = s.ball;
   const R = C.BALL_R * FP;
   const prevX = b.x;
 
+  // 颱風天（每日挑戰的特殊規則）：橫向風力，每 5 秒換一次方向
+  if (cfg.wind) b.vx += Math.floor(s.frame / 300) % 2 === 0 ? cfg.wind : -cfg.wind;
   b.vy += C.BALL_GRAVITY;
   if (b.vy > C.BALL_MAX_VY) b.vy = C.BALL_MAX_VY;
   b.x += b.vx;
@@ -361,7 +364,7 @@ export function step(state: GameState, in1: InputFrame, in2: InputFrame, cfg: Ma
   } else {
     updatePlayer(s, 0, inputs[0], cfg);
     updatePlayer(s, 1, inputs[1], cfg);
-    const landed = moveBall(s);
+    const landed = moveBall(s, cfg);
     if (!landed) collidePlayers(s, inputs, cfg);
     if (landed) {
       const b = s.ball;

@@ -4,10 +4,15 @@
 
 | 資產 | 來源 |
 | --- | --- |
-| 角色精靈圖（13 位原創角色：雲雲與 12 種台灣動物，吉卜力式手繪上色，128×128） | `scripts/gen-assets.mjs` 以程式逐像素繪製（原創角色，未參考任何既有角色造型） |
+| 角色精靈圖（16 種臺灣動物，吉卜力式手繪上色，128×128；造型配件以 Canvas 即時繪製） | `scripts/gen-assets.mjs` 以程式逐像素繪製（原創角色，未參考任何既有角色造型） |
 | PWA 圖示 | 同上 |
-| 場景（夏日海灘、黃昏湖畔、彗星之夜、信義夜景、木柵動物園、台大椰林大道、松菸大巨蛋、圓山花博、陽明山溫泉、淡水夕陽；景點皆為原創繪製、未使用官方標誌：天空、積雲、光束、鏡頭光斑、星空、彗星、流星、山稜、湖面倒影、沙灘、網子、排球配色） | `src/render/scenery.ts`、`src/render/cityzoo.ts`、`src/render/landmarks.ts`、`src/render/renderer.ts` 以 Canvas 2D 即時繪製 |
+| 場景（夏日海灘、黃昏湖畔、彗星之夜、信義夜景、木柵動物園、台大椰林大道、松菸大巨蛋、圓山花博、陽明山溫泉、淡水夕陽、金門古厝、武陵溪谷；景點皆為原創繪製、未使用官方標誌：天空、積雲、光束、鏡頭光斑、星空、彗星、流星、山稜、湖面倒影、沙灘、網子、排球配色） | `src/render/scenery.ts`、`src/render/cityzoo.ts`、`src/render/landmarks.ts`、`src/render/islands.ts`、`src/render/renderer.ts` 以 Canvas 2D 即時繪製 |
 | 音效與背景音樂 | `src/audio/audio.ts` 以 Web Audio API 即時合成 |
+
+## 資料
+
+- 動物的保育等級（臺灣特有、保育類、臺灣紅皮書、IUCN、CITES）與學名：[TaiCOL 臺灣物種名錄](https://taicol.tw)，CC BY 4.0。以 `npm run fetch:taicol` 用學名查詢 API，存成 `src/data/conservation.json`，遊戲內註明出處與擷取日期。
+- 冷知識取自整理稿，並參考：[台灣生命大百科](https://taieol.tw)（白面鼯鼠）、Newtalk 2026-04-17 黑面琵鷺普查報導、屏科大熊鷹仿真羽毛相關報導。
 
 ## 參考（僅參考遊戲行為，未複製任何程式碼或素材）
 

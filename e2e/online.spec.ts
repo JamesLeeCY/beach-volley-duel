@@ -30,7 +30,7 @@ async function playMatch(browser: import('@playwright/test').Browser, net: NetSi
   await waitScreen(host, 'onlineChar');
 
   // 房客改選角色再準備，確認角色同步
-  await guest.getByRole('button', { name: '▶' }).last().click();
+  await guest.locator('.cell[data-id="lanlan"]').click();
   for (const p of [host, guest]) await p.getByRole('button', { name: 'Ready', exact: true }).click();
 
   for (const p of [host, guest]) await p.waitForFunction(() => (window as any).app?.onlineStarted === true, null, { timeout: 15_000 });

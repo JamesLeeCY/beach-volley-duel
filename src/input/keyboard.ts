@@ -34,7 +34,7 @@ export const LEGACY_KEYMAPS: Readonly<[KeyMap, KeyMap]> = [
 ];
 
 /** 不可綁定的按鍵（暫停／返回／全域快捷鍵） */
-const RESERVED = new Set(['Escape', 'Space', 'Tab', 'F5', 'F11', 'F12', 'MetaLeft', 'MetaRight']);
+const RESERVED = new Set(['Escape', 'Space', 'KeyP', 'Tab', 'F5', 'F11', 'F12', 'MetaLeft', 'MetaRight']);
 
 export function cloneKeymap(m: Readonly<KeyMap>): KeyMap {
   return { left: [...m.left], right: [...m.right], up: [...m.up], down: [...m.down], hit: [...m.hit] };
@@ -44,11 +44,17 @@ export function cloneKeymap(m: Readonly<KeyMap>): KeyMap {
 export const KEYMAP_1P: KeyMap = cloneKeymap(DEFAULT_KEYMAP_1P);
 export const KEYMAP_2P: KeyMap = cloneKeymap(DEFAULT_KEYMAP_2P);
 
+/**
+ * 單人模式（對戰電腦、練習、線上）額外接受的擊球鍵：空白鍵或 J。
+ * 方向鍵在單人模式本來就能移動（兩套鍵位都控制自己）。J 已被綁成其他動作時就不加。
+ */
+export const SOLO_KEYMAP: KeyMap = { left: [], right: [], up: [], down: [], hit: ['Space', 'KeyJ'] };
+
 let gameKeys = new Set<string>();
 function refreshGameKeys() {
-  gameKeys = new Set(
-    [KEYMAP_1P, KEYMAP_2P].flatMap((m) => KEY_ACTIONS.flatMap((a) => m[a])).concat(['Space']),
-  );
+  const bound = [KEYMAP_1P, KEYMAP_2P].flatMap((m) => KEY_ACTIONS.flatMap((a) => m[a]));
+  SOLO_KEYMAP.hit = ['Space', 'KeyJ'].filter((k) => !bound.includes(k));
+  gameKeys = new Set(bound.concat(['Space', 'KeyJ']));
 }
 refreshGameKeys();
 
