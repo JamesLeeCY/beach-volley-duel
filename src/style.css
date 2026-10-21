@@ -1251,7 +1251,7 @@ button.line {
 
 .grid-row {
   display: grid;
-  grid-template-columns: 56px repeat(4, minmax(60px, 76px));
+  grid-template-columns: 68px repeat(4, minmax(60px, 76px));
   gap: 6px;
   align-items: center;
 }
@@ -1262,6 +1262,7 @@ button.line {
   color: var(--accent);
   text-align: right;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .cell {
@@ -1290,11 +1291,27 @@ button.line {
 
 .cell-name {
   position: relative;
+  max-width: 100%;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.1;
   color: #fff;
   text-shadow: 0 1px 2px #000, 0 0 3px #000;
-  white-space: nowrap;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* 圖鑑格子顯示物種全名（英文較長）：最多兩行、字小一點 */
+.dex-grid .cell-name {
+  font-size: 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dex-grid .grid-row {
+  grid-template-columns: 80px repeat(4, minmax(64px, 92px));
 }
 
 .cell.locked img {
@@ -1385,11 +1402,17 @@ button.line {
 
 @media (max-height: 520px) {
   .grid-row {
-    grid-template-columns: 40px repeat(4, minmax(44px, 54px));
+    grid-template-columns: 54px repeat(4, minmax(44px, 54px));
     gap: 4px;
   }
   .row-label {
     font-size: 10px;
+  }
+  .dex-grid .cell-name {
+    font-size: 8px;
+  }
+  .dex-grid .grid-row {
+    grid-template-columns: 60px repeat(4, minmax(52px, 64px));
   }
   .cell-name {
     font-size: 9px;
@@ -1433,6 +1456,11 @@ button.line {
 }
 
 /* ---------- 開打前的按鍵說明卡、觸控按鈕文字 ---------- */
+/* 按鍵說明卡出現時，先把上方「第一場」的提示藏起來，避免重疊 */
+#app:has(.controls-card) .coach {
+  visibility: hidden;
+}
+
 .controls-card {
   pointer-events: none;
   background: rgba(12, 28, 52, 0.88);
@@ -1696,4 +1724,22 @@ body:not(.want-landscape) .rotate-cancel {
   flex: none;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 12px;
+}
+
+@media (max-height: 420px) {
+  .controls-card {
+    margin-bottom: 60px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}
+
+/* 倒數數字放在按鍵說明卡下面 */
+#overlay:has(.controls-card) {
+  flex-direction: column;
+  gap: 4px;
+}
+
+#overlay:has(.controls-card) .controls-card {
+  margin-bottom: 0;
 }

@@ -32,6 +32,8 @@ describe('動物圖鑑與陣容', () => {
     expect(isHome('tata', 'kinmen')).toBe(true);
     expect(isHome('sakura', 'wuling')).toBe(true);
     expect(isHome('tata', 'beach')).toBe(false);
+    // 主場是野外棲地，不是動物園
+    for (const id of ['shishi', 'hoho', 'jiajia']) expect(isHome(id, 'zoo'), id).toBe(false);
   });
 });
 

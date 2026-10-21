@@ -20,7 +20,7 @@ export const HIDDEN_CHARACTER = 'baobao';
 type Text = Record<Lang, string>;
 
 export interface DexEntry {
-  /** 主場：在這些場景比賽時有小加成 */
+  /** 主場：在這些場景比賽時有小加成（選野外棲地，不用動物園） */
   home: SceneId[];
   trivia: Text[];
 }
@@ -37,7 +37,7 @@ export const DEX: Record<string, DexEntry> = {
     ],
   },
   shishi: {
-    home: ['zoo'],
+    home: ['yangming'],
     trivia: [
       T('臺灣雲豹被認定滅絕後，石虎成了臺灣唯一現存的原生貓科動物。', 'Since the clouded leopard was declared gone, the leopard cat is Taiwan\'s only surviving native wild cat.'),
       T('額頭有兩條白色縱紋，耳朵背面有白色斑點，是辨認重點。', 'Look for two white stripes on its forehead and white spots on the backs of its ears.'),
@@ -53,7 +53,7 @@ export const DEX: Record<string, DexEntry> = {
     ],
   },
   hoho: {
-    home: ['zoo'],
+    home: ['yangming'],
     trivia: [
       T('臺灣唯一的原生猴類。', 'Taiwan\'s only native monkey.'),
       T('臉頰內側有頰囊，可以先把食物塞進去，晚點再慢慢吃。', 'It has cheek pouches to stash food and eat it later.'),
@@ -69,7 +69,7 @@ export const DEX: Record<string, DexEntry> = {
     ],
   },
   jiajia: {
-    home: ['zoo'],
+    home: ['yangming'],
     trivia: [
       T('遇到危險會捲成一顆球，鱗片和人的指甲一樣是角蛋白構成的。', 'When threatened it rolls into a ball. Its scales are keratin, like your fingernails.'),
     ],

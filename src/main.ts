@@ -14,7 +14,7 @@ import { Coach } from './ui/coach';
 import { beats, dareUrl, headline, lineShareUrl, parseDare, stripLinkParams, type Dare } from './ui/dare';
 import type { ShareInfo } from './ui/sharecard';
 import { clearErrors, errorEntries, installErrorLog, issueUrl, recordError } from './ui/errorlog';
-import { STAGE_COUNT, STAGE_DIFFS, STAGE_SCENES, STAGE_TARGET, buildStages, loadBest, saveBest } from './ui/challenge';
+import { FIRST_OPPONENT, STAGE_COUNT, STAGE_DIFFS, STAGE_SCENES, STAGE_TARGET, buildStages, loadBest, saveBest } from './ui/challenge';
 import {
   applyKeymaps, canBind, cloneKeymap, DEFAULT_KEYMAP_1P, DEFAULT_KEYMAP_2P, Keyboard, KEY_ACTIONS, KEYMAP_1P, KEYMAP_2P,
   keyLabel, keymapSide, menuAction, rebind, SOLO_KEYMAP, type KeyAction, type KeyMap,
@@ -188,24 +188,39 @@ class App {
   private setupPwa() {
     try {
       this.needRefresh = registerSW({
-        onNeedRefresh: () => this.offerUpdate(),
+        onNeedRefresh: () => this.applyUpdate(),
         onOfflineReady: () => this.toast(t('offlineReady')),
+        // 分頁一直開著時，每 30 分鐘檢查一次有沒有新版本
+        onRegisteredSW: (_url, reg) => reg && setInterval(() => void reg.update().catch(() => {}), 30 * 60_000),
       });
     } catch {
       // 開發模式或不支援
     }
+    try {
+      if (sessionStorage.getItem('bvd.updated')) {
+        sessionStorage.removeItem('bvd.updated');
+        setTimeout(() => this.toast(t('updated'), [], 2500), 800);
+      }
+    } catch {
+      // 忽略
+    }
   }
 
-  private offerUpdate() {
-    // 比賽中不打斷，等回到選單
-    if (this.mode !== 'demo') {
-      setTimeout(() => this.offerUpdate(), 5000);
+  /**
+   * 有新版本：不在比賽中、也不在線上房間時直接換成新版（不再詢問，避免玩家按「稍後」一直玩舊版）。
+   * 比賽或連線中就等回到選單再換。
+   */
+  private applyUpdate() {
+    if (this.mode !== 'demo' || this.online || this.screenName === 'settings') {
+      setTimeout(() => this.applyUpdate(), 3000);
       return;
     }
-    this.toast(t('updateReady'), [
-      [t('update'), () => this.needRefresh?.(true)],
-      [t('later'), () => this.hideToast()],
-    ], 0);
+    try {
+      sessionStorage.setItem('bvd.updated', '1');
+    } catch {
+      // 忽略
+    }
+    void this.needRefresh?.(true);
   }
 
   applySettings() {
@@ -497,7 +512,9 @@ class App {
     const homeBonus: string[] = [];
     const stats = ([0, 1] as const).map((i) => {
       const st: Stats = this.settings.balance ? { speed: 0, jump: 0, power: 0 } : statsOf(this.chars[i]);
-      if (mode !== 'practice' && isHome(this.chars[i], this.scene)) {
+      // 電腦在新手、入門、簡單難度時不吃主場加成，讓前幾場維持好打
+      const cpuEasy = mode === 'cpu' && i !== this.humanSide && ['rookie', 'beginner', 'easy'].includes(this.difficulty);
+      if (mode !== 'practice' && !cpuEasy && isHome(this.chars[i], this.scene)) {
         st.speed = Math.min(2, st.speed + 1);
         homeBonus.push(displayName(getCharacter(this.chars[i]), getLang()));
       }
@@ -735,10 +752,12 @@ class App {
     this.daily = null;
     this.tour = null;
     const me = hasCharacter(this.settings.lastChar) && this.isUnlocked(this.settings.lastChar) ? this.settings.lastChar : DEFAULT_CHARACTER;
-    const others = this.selectableIds().filter((id) => id !== me && !getCharacter(id).local);
-    this.chars = [me, others[(Math.random() * others.length) | 0] ?? me];
-    this.humanSide = 0;
     const first = !this.settings.firstMatchDone;
+    const others = this.selectableIds().filter((id) => id !== me && !getCharacter(id).local);
+    // 第一場固定對梅梅（和闖關第 1 關一樣），之後隨機
+    const opp = first ? (me === FIRST_OPPONENT ? 'shishi' : FIRST_OPPONENT) : others[(Math.random() * others.length) | 0];
+    this.chars = [me, opp ?? me];
+    this.humanSide = 0;
     // 第一場：最簡單的電腦、5 分短賽，邊打邊教
     if (first) this.difficulty = 'beginner';
     this.startLocalMatch('cpu', first ? { target: 5 } : {});
