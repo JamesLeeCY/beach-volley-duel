@@ -81,6 +81,12 @@ export class OnlineMatch {
   connLost = false;
   /** 重連成功的次數（測試用） */
   resumes = 0;
+  /**
+   * 加入者斷線後、收到房主的 resume 之前：舊 session 已作廢，不推進也不送輸入／hash。
+   * 否則新連線一打開，舊 session 超前房主確定幀的輸入會被房主的新 session 收下（先到先贏），
+   * 雙方用不同的輸入模擬而去同步。
+   */
+  private awaitingResume = false;
   private reconnectTimer: number | null = null;
   private cfg: MatchConfig | null = null;
   private packRequested = new Set<string>();
@@ -126,6 +132,7 @@ export class OnlineMatch {
       return;
     }
     this.connLost = true;
+    if (!this.isHost) this.awaitingResume = true;
     if (!this.isHost && this.reconnectTimer === null) {
       // 稍等再撥：讓房主先察覺舊連線已斷，否則會被當成滿房
       this.reconnectTimer = window.setInterval(() => this.transport.reconnect(), 2000);
@@ -198,6 +205,7 @@ export class OnlineMatch {
 
   private begin(info: StartInfo) {
     this.info = info;
+    this.awaitingResume = false;
     this.wantRematch = false;
     this.remoteRematch = false;
     const cfg: MatchConfig = defaultConfig({
@@ -291,6 +299,7 @@ export class OnlineMatch {
       case 'hash': {
         const f = Number(m.f);
         const h = Number(m.h);
+        if (this.awaitingResume) break;
         const mine = this.session?.hashAt(f) ?? null;
         if (mine === null) this.pendingHashes.set(f, h);
         else if (mine !== h) this.onDesync(f);
@@ -303,7 +312,10 @@ export class OnlineMatch {
         void this.receivePackPart(String(m.id), Number(m.i), Number(m.n), String(m.d));
         break;
       case 'resume':
-        if (!this.isHost && this.session) this.restartFrom(deserializeState(String(m.s)));
+        if (!this.isHost && this.session) {
+          this.awaitingResume = false;
+          this.restartFrom(deserializeState(String(m.s)));
+        }
         break;
       case 'resync':
         if (this.isHost && this.session) this.transport.send({ t: 'state', s: serializeState(this.session.confirmed) });
@@ -329,7 +341,7 @@ export class OnlineMatch {
   private handleInput(buf: ArrayBuffer) {
     this.lastRecv = performance.now();
     const p = decodePacket(buf);
-    if (p && this.session) this.session.receive(p);
+    if (p && this.session && !this.awaitingResume) this.session.receive(p);
   }
 
   /** 每個邏輯幀呼叫一次；回傳是否推進了模擬 */
@@ -351,6 +363,8 @@ export class OnlineMatch {
       this.disconnected = false;
       this.cb.onDisconnect(null);
     }
+
+    if (this.awaitingResume) return false;
 
     let advanced = false;
     // 時鐘校正：長期領先對方 2 幀以上時，每秒讓出一幀
