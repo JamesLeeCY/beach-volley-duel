@@ -41,6 +41,7 @@ import { button, cardPicker, h, moveFocus, segmented } from './ui/dom';
 // 線上模組（含 PeerJS）在進入線上對戰時才載入
 import type { OnlineMatch, StartInfo } from './net/online';
 import { normalizeCode } from './net/code';
+import { turnConfigured } from './net/ice';
 
 type Mode = 'demo' | 'cpu' | 'local' | 'practice' | 'online';
 
@@ -2449,6 +2450,9 @@ class App {
       'room-not-found': `${t('roomCode')} ✕`,
       full: 'Room full',
       timeout: 'timeout',
+      'timeout-signal': t('errSignal'),
+      // 配對成功但找不到連線路徑：沒有可用的中繼伺服器時，提示改用同一個 Wi-Fi
+      'timeout-p2p': turnConfigured() ? t('errP2pTurn') : t('errP2p'),
     };
     const text = msg === 'version' ? map.version : t('connFailed', { msg: map[msg] ?? msg });
     const code = this.online?.transport.code;

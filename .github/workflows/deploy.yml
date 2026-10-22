@@ -46,6 +46,11 @@ jobs:
           # 成效追蹤（選用）：在 repo 的 Settings → Secrets and variables → Actions → Variables 設定，沒設定就不追蹤
           VITE_PLAUSIBLE_DOMAIN: ${{ vars.PLAUSIBLE_DOMAIN }}
           VITE_GOATCOUNTER: ${{ vars.GOATCOUNTER }}
+          # 線上對戰的中繼伺服器（選用）：手機 4G 對家裡 Wi-Fi 等無法直連時需要，說明見 src/net/ice.ts
+          VITE_TURN_ENDPOINT: ${{ vars.TURN_ENDPOINT }}
+          VITE_TURN_URLS: ${{ vars.TURN_URLS }}
+          VITE_TURN_USER: ${{ vars.TURN_USER }}
+          VITE_TURN_CRED: ${{ vars.TURN_CRED }}
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

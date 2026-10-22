@@ -56,7 +56,10 @@ npm run fetch:taicol # 從 TaiCOL 重新抓 16 種動物的保育資料（src/da
 - 信令使用 PeerJS 公用伺服器（`0.peerjs.com`），STUN／TURN 使用 PeerJS 預設設定，所以只靠靜態主機就能連線，不需自架後端。
 - 房主建立房間得到 6 碼房間碼與連結 `?room=XXXXXX`；對方開連結或輸入房間碼加入。
 - 房間畫面有「LINE 邀請朋友」按鈕，朋友點開連結就直接進房，不用輸入房號。手機開 LINE App、電腦用 LINE 官方分享外掛；分享連結帶 `openExternalBrowser=1`，從 LINE 點開會改用手機預設瀏覽器。
-- 行動網路（4G／5G）連線還沒實測；若連不上，需要在 `src/net/transport.ts` 加 TURN 伺服器。
+- 中繼伺服器（TURN）：PeerJS 內建與常見的公用 TURN 目前都沒有回應，所以兩台裝置無法直連時（例如手機 4G 對家裡 Wi-Fi、路由器不支援回流）會連線逾時。可在 GitHub repo 的 Variables 設定其中一種：
+  - `TURN_ENDPOINT`：回傳 ICE 伺服器清單的網址（例如 Metered 的 `https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key>`，或自己的 Cloudflare Worker）。
+  - `TURN_URLS`、`TURN_USER`、`TURN_CRED`：固定的 TURN 帳號。
+  - 沒設定時只用 STUN（Google、Cloudflare），連線逾時會分成「連不上配對伺服器」與「找不到兩台裝置之間的連線路徑」兩種提示。
 - 雙方各自跑同一個決定性引擎，只交換每幀 1 byte 的輸入（輸入延遲 1～3 幀＋rollback），每 30 幀對帳一次 hash。
 
 ## 分享與挑戰連結

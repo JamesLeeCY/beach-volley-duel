@@ -16,11 +16,13 @@ const hooks: NetTestHooks = (globalThis as { __BVD_NET__?: NetTestHooks }).__BVD
 
 import { randomCode } from './code';
 import { recordError } from '../ui/errorlog';
+import { iceServers } from './ice';
 
 export { normalizeCode, randomCode } from './code';
 
 const PREFIX = 'bvd-duel-v1-';
-const CONNECT_TIMEOUT = 15000;
+/** 加入房間的等待時間（經過中繼伺服器時比較慢，給多一點時間） */
+const CONNECT_TIMEOUT = 20000;
 
 export type NetMessage = { t: string; [k: string]: unknown };
 
@@ -48,8 +50,14 @@ export class Transport {
   /** 建立房間：等待對方加入 */
   host(onCode: (code: string) => void, attempt = 0) {
     this.isHost = true;
+    void iceServers().then((servers) => {
+      if (!this.closed) this.startHost(onCode, attempt, servers);
+    });
+  }
+
+  private startHost(onCode: (code: string) => void, attempt: number, servers: RTCIceServer[]) {
     this.code = randomCode();
-    const peer = new Peer(PREFIX + this.code, { debug: 1, ...hooks.peer });
+    const peer = new Peer(PREFIX + this.code, { debug: 1, config: { iceServers: servers }, ...hooks.peer });
     this.peer = peer;
     peer.on('open', () => onCode(this.code));
     peer.on('connection', (conn) => {
@@ -68,7 +76,7 @@ export class Transport {
     peer.on('error', (err: Error & { type?: string }) => {
       if (err.type === 'unavailable-id' && attempt < 3) {
         peer.destroy();
-        this.host(onCode, attempt + 1);
+        this.startHost(onCode, attempt + 1, servers);
         return;
       }
       if (err.type === 'peer-unavailable') return;
@@ -84,11 +92,29 @@ export class Transport {
   join(code: string) {
     this.isHost = false;
     this.code = code;
-    const peer = new Peer({ debug: 1, ...hooks.peer });
-    this.peer = peer;
+    if (this.timeout) clearTimeout(this.timeout);
     this.timeout = window.setTimeout(() => {
-      if (!this.conn?.open) this.ev.onError('timeout');
+      if (!this.conn?.open) this.ev.onError(this.timeoutReason());
     }, CONNECT_TIMEOUT);
+    void iceServers().then((servers) => {
+      if (!this.closed) this.startJoin(servers);
+    });
+  }
+
+  /**
+   * 逾時的原因：連不上配對伺服器（timeout-signal），
+   * 或配對成功但找不到雙方之間的連線路徑（timeout-p2p，通常是需要中繼伺服器）。
+   */
+  private timeoutReason(): string {
+    if (!this.peer?.open) return 'timeout-signal';
+    const pc = this.conn?.peerConnection;
+    recordError('net', `timeout: ice=${pc?.iceConnectionState ?? 'none'} gathering=${pc?.iceGatheringState ?? 'none'}`);
+    return 'timeout-p2p';
+  }
+
+  private startJoin(servers: RTCIceServer[]) {
+    const peer = new Peer({ debug: 1, config: { iceServers: servers }, ...hooks.peer });
+    this.peer = peer;
     peer.on('open', () => {
       if (!this.conn?.open) this.dial();
     });
@@ -113,7 +139,9 @@ export class Transport {
     if (this.closed || this.isHost || !this.peer) return;
     if (this.conn?.open) return;
     if (this.peer.destroyed) {
-      this.join(this.code);
+      void iceServers().then((servers) => {
+        if (!this.closed) this.startJoin(servers);
+      });
     } else if (this.peer.disconnected) {
       this.peer.reconnect(); // 重新連上信令伺服器後，open 事件會自動撥號
     } else {
