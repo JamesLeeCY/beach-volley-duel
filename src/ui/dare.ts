@@ -83,14 +83,41 @@ export function headline(lang: Lang, me: string, opp: string, score: readonly [n
   return self ? `我用${me} ${s} ${verb}${opp} 🏐` : `${me} ${s} ${verb}${opp} 🏐`;
 }
 
-/** 移除網址上的邀請／挑戰參數（處理完就清掉，重新整理不會再觸發一次） */
+/** 網址上的邀請／挑戰／每日挑戰參數（處理完就清掉，重新整理不會再觸發一次） */
+const LINK_PARAMS = ['room', 'vs', 'as', 'scene', 'score', 'lv', 'to', 'daily', 'openExternalBrowser'];
+
+export function hasLinkParams(search: string): boolean {
+  const q = new URLSearchParams(search);
+  return LINK_PARAMS.some((k) => q.has(k));
+}
+
 export function stripLinkParams(url: string): string {
   const u = new URL(url);
-  for (const k of ['room', 'vs', 'as', 'scene', 'score', 'lv', 'to']) u.searchParams.delete(k);
+  for (const k of LINK_PARAMS) u.searchParams.delete(k);
   return u.pathname + (u.search === '?' ? '' : u.search) + u.hash;
 }
 
-/** LINE 分享網址（手機有裝 LINE 會直接開 App，電腦會開分享頁） */
-export function lineShareUrl(text: string): string {
-  return `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+/**
+ * 分享出去的連結：請 LINE 改用手機預設的瀏覽器開啟（LINE 官方支援的參數）。
+ * 內建瀏覽器不能加入主畫面、全螢幕與轉向支援較差，線上對戰也可能不穩。
+ */
+export function withExternalBrowser(url: string): string {
+  const u = new URL(url);
+  u.searchParams.set('openExternalBrowser', '1');
+  return u.toString();
+}
+
+/** 是否為手機或平板（iPadOS 會偽裝成 Mac，用觸控點數判斷） */
+export function isMobileDevice(ua = navigator.userAgent, touchPoints = navigator.maxTouchPoints ?? 0): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(ua) || (touchPoints > 1 && /Macintosh/.test(ua));
+}
+
+/**
+ * LINE 分享網址：
+ * - 手機：line.me/R/share，直接開 LINE App
+ * - 電腦：LINE 官方的分享外掛（line.me/R/share 在電腦上會被導回首頁，內容會消失）
+ */
+export function lineShareUrl(text: string, url: string, mobile = isMobileDevice()): string {
+  if (mobile) return `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+  return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
 }

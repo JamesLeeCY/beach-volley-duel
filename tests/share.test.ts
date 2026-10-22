@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beats, dareUrl, headline, lineShareUrl, parseDare, stripLinkParams, type Dare } from '../src/ui/dare';
+import { beats, dareUrl, hasLinkParams, headline, isMobileDevice, lineShareUrl, parseDare, stripLinkParams, withExternalBrowser, type Dare } from '../src/ui/dare';
 import { COACH_MAX_TICKS, Coach } from '../src/ui/coach';
 import { createState, defaultConfig, step } from '../src/engine/physics';
 import { IN_RIGHT } from '../src/engine/types';
@@ -44,15 +44,31 @@ describe('挑戰連結', () => {
     expect(headline('en', 'Leopard Cat', 'Black Bear', [7, 3])).toBe('My Leopard Cat crushed Black Bear 7:3 🏐');
   });
 
-  it('處理完的連結參數會從網址移除，其他參數保留', () => {
-    expect(stripLinkParams('https://x.test/g/?vs=a&as=b&scene=lake&score=7-3&lv=hard&to=7')).toBe('/g/');
+  it('處理完的連結參數（含 LINE 的 openExternalBrowser、每日挑戰）會從網址移除，其他參數保留', () => {
+    expect(stripLinkParams('https://x.test/g/?vs=a&as=b&scene=lake&score=7-3&lv=hard&to=7&openExternalBrowser=1')).toBe('/g/');
     expect(stripLinkParams('https://x.test/g/?room=ABC234&debug=1#x')).toBe('/g/?debug=1#x');
+    expect(stripLinkParams('https://x.test/g/?daily=2026-10-22')).toBe('/g/');
+    expect(hasLinkParams('?daily=2026-10-22')).toBe(true);
+    expect(hasLinkParams('?debug=1')).toBe(false);
   });
 
-  it('LINE 分享網址把文字完整編碼', () => {
-    expect(lineShareUrl('我 7:3\nhttps://a.b/?x=1&y=2')).toBe(
+  it('分享連結請 LINE 用外部瀏覽器開啟，挑戰連結照樣能解析', () => {
+    const url = withExternalBrowser(dareUrl('https://x.test/game/', sample));
+    expect(url).toContain('openExternalBrowser=1');
+    expect(parseDare(new URL(url).search, valid)).toEqual(sample);
+  });
+
+  it('LINE 分享：手機開 App，電腦用官方分享外掛（內容不會消失）', () => {
+    expect(lineShareUrl('我 7:3\nhttps://a.b/?x=1&y=2', 'https://a.b/?x=1&y=2', true)).toBe(
       'https://line.me/R/share?text=%E6%88%91%207%3A3%0Ahttps%3A%2F%2Fa.b%2F%3Fx%3D1%26y%3D2',
     );
+    expect(lineShareUrl('hi', 'https://a.b/?x=1', false)).toBe(
+      'https://social-plugins.line.me/lineit/share?url=https%3A%2F%2Fa.b%2F%3Fx%3D1&text=hi',
+    );
+    expect(isMobileDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)', 5)).toBe(true);
+    expect(isMobileDevice('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 5)).toBe(true); // iPad
+    expect(isMobileDevice('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 0)).toBe(false);
+    expect(isMobileDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 0)).toBe(false);
   });
 });
 

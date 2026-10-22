@@ -11,7 +11,7 @@ import { audio } from './audio/audio';
 import type { MusicId } from './audio/music';
 import { TUTORIAL_STEPS, Tutorial, type TutorialStep } from './ui/tutorial';
 import { Coach } from './ui/coach';
-import { beats, dareUrl, headline, lineShareUrl, parseDare, stripLinkParams, type Dare } from './ui/dare';
+import { beats, dareUrl, hasLinkParams, headline, lineShareUrl, parseDare, stripLinkParams, withExternalBrowser, type Dare } from './ui/dare';
 import type { ShareInfo } from './ui/sharecard';
 import { clearErrors, errorEntries, installErrorLog, issueUrl, recordError } from './ui/errorlog';
 import { FIRST_OPPONENT, STAGE_COUNT, STAGE_DIFFS, STAGE_SCENES, STAGE_TARGET, buildStages, loadBest, saveBest } from './ui/challenge';
@@ -23,6 +23,7 @@ import { initAnalytics, track } from './analytics';
 import { CONSERVATION, CONSERVATION_SOURCE, DEX, HABITAT_ROWS, HIDDEN_CHARACTER, iucnLabel, isHome, protectedLabel, redlistLabel, type Habitat } from './data/dex';
 import { dailyFor, emojiLine, localDate, type Daily, type DailyRule, type Rally } from './ui/daily';
 import { ROUTE, TOUR_TARGET, nextStation, stationHost, stationLevel } from './ui/tour';
+import { tourMapSvg } from './ui/tourmap';
 import {
   ACHIEVEMENTS, COSMETICS, STAR_REWARDS, ensureTasks, exportCode, importCode, loadProgress, markDaily, ownedCosmetics, recordMatch,
   saveProgress, type Cosmetic, type MatchRecord, type Task, type TaskKind,
@@ -165,10 +166,15 @@ class App {
       char: (id) => hasCharacter(id) && !getCharacter(id).local,
       scenes: SCENES,
     });
-    if (params.has('vs')) history.replaceState(null, '', stripLinkParams(location.href));
+    // 每日挑戰連結（?daily=日期）一律開「今天」那關，避免改日期刷分
+    const dailyParam = params.get('daily');
+    if (hasLinkParams(location.search)) history.replaceState(null, '', stripLinkParams(location.href));
     if (code) this.showOnlineJoin(code, true);
     else if (dare) this.showDare(dare);
-    else {
+    else if (dailyParam) {
+      this.showDaily();
+      if (dailyParam !== localDate()) this.toast(t('dailyOld'), [], 4000);
+    } else {
       this.showTitle();
       if (params.has('vs')) this.toast(t('dareInvalid'), [], 4000);
     }
@@ -1567,12 +1573,13 @@ class App {
     // 只有正常打完、雙方都是內建角色時才產生挑戰連結（朋友那邊沒有匯入的角色）
     const canDare = (this.mode === 'cpu' || this.mode === 'online') && Math.max(...mine) >= target && mine[0] !== mine[1]
       && packs.every((p) => !p.local);
-    const link = canDare
+    // 分享出去的連結都請 LINE 用外部瀏覽器開啟
+    const link = withExternalBrowser(canDare
       ? dareUrl(base, {
         me: ids[0], opp: ids[1], scene: this.scene, score: mine, target,
         level: this.mode === 'online' ? 'hard' : this.difficulty,
       })
-      : base;
+      : base);
     const text = canDare ? t('dareShareText', { headline: line, url: link }) : `${line}\n${link}`;
     const info: ShareInfo = {
       title: t('title'),
@@ -1619,7 +1626,7 @@ class App {
     const buttons = h('div', { class: 'menu row share-row' },
       button(t('lineChallenge'), () => {
         track('share', { kind: 'line', dare: canDare });
-        window.open(lineShareUrl(text), '_blank', 'noopener');
+        window.open(lineShareUrl(text, link), '_blank', 'noopener');
       }, 'line small'),
       imgBtn,
       copyBtn,
@@ -1888,12 +1895,13 @@ class App {
   }
 
   private dailyShareButtons(d: Daily, emoji: string, score: [number, number]) {
-    const url = `${location.origin}${location.pathname}`;
+    // 朋友點開直接進今天的每日挑戰
+    const url = withExternalBrowser(`${location.origin}${location.pathname}?daily=${d.date}`);
     const text = `🏐 ${t('title')} #${d.no} ${emoji} ${score[0]}:${score[1]}\n${url}`;
     return h('div', { class: 'menu row share-row' },
       button(t('lineShare'), () => {
         track('share', { kind: 'daily_line' });
-        window.open(lineShareUrl(text), '_blank', 'noopener');
+        window.open(lineShareUrl(text, url), '_blank', 'noopener');
       }, 'line small'),
       button(t('copyLink'), async () => {
         try {
@@ -1926,10 +1934,13 @@ class App {
       );
     }));
     const finished = next < 0;
+    // 臺灣地圖：蓋到章的站點亮
+    const svg = h('div', { class: 'tour-map-svg' });
+    svg.innerHTML = tourMapSvg(stamps, next);
     const el = h('div', { class: 'screen wide' },
       h('h2', {}, `🗺️ ${hard ? t('tourHard') : t('tour')}`),
       h('p', { class: 'help' }, t('tourIntro', { n: stamps.length, total: ROUTE.length })),
-      map,
+      h('div', { class: 'tour-layout' }, svg, map),
       h('div', { class: 'menu row' },
         finished ? null : button(`▶ ${t('tourGo', { name: t(App.SCENE_LABELS[ROUTE[next].scene]) })}`, () => this.requireLandscape(() => this.startTourStation(next, hard)), 'primary'),
         p.stamps.length >= ROUTE.length ? button(`📜 ${t('tourCert')}`, () => this.showCertificate(false), 'secondary') : null,
@@ -2040,7 +2051,7 @@ class App {
           b.disabled = true;
           const stars = c ? STAR_REWARDS[c] : undefined;
           b.title = stars ? t('cosStars', { n: stars }) : t('cosLocked');
-          b.textContent = `🔒 ${b.textContent}`;
+          b.textContent = stars ? `🔒 ${b.textContent} ⭐${stars}` : `🔒 ${b.textContent}`;
         }
         return b;
       }),
@@ -2375,7 +2386,7 @@ class App {
   }
 
   private onRoomCode(code: string) {
-    const link = `${location.origin}${location.pathname}?room=${code}`;
+    const link = withExternalBrowser(`${location.origin}${location.pathname}?room=${code}`);
     const text = t('inviteText', { url: link });
     const copyBtn = button(t('shareLink'), async () => {
       try {
@@ -2394,7 +2405,7 @@ class App {
       h('div', { class: 'menu' },
         button(t('lineInvite'), () => {
           track('share', { kind: 'invite' });
-          window.open(lineShareUrl(text), '_blank', 'noopener');
+          window.open(lineShareUrl(text, link), '_blank', 'noopener');
         }, 'line'),
         copyBtn,
       ),

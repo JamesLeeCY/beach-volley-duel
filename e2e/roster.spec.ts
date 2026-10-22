@@ -140,3 +140,13 @@ test('round-island tour: win a stop to get a stamp, finishing unlocks the cloude
   expect(await app(page, (a) => a.isUnlocked('baobao'))).toBe(true);
   await ctx.close();
 });
+
+test('daily share link from LINE: opens today\'s daily challenge and cleans the URL', async ({ browser }) => {
+  const ctx = await newPlayer(browser);
+  const page = await ctx.newPage();
+  await page.goto('/?daily=2026-01-01&openExternalBrowser=1');
+  await waitScreen(page, 'daily');
+  expect(new URL(page.url()).search).toBe('');
+  await expect(page.locator('#toast')).toContainText('earlier day');
+  await ctx.close();
+});
