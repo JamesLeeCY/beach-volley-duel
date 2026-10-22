@@ -25,10 +25,14 @@ export function turnConfigured(): boolean {
 export function parseIceServers(data: unknown): RTCIceServer[] {
   const list = Array.isArray(data) ? data : (data as { iceServers?: unknown })?.iceServers;
   if (!Array.isArray(list)) return [];
-  return list.filter((s): s is RTCIceServer => {
-    const u = (s as RTCIceServer)?.urls;
-    return typeof u === 'string' || (Array.isArray(u) && u.every((x) => typeof x === 'string'));
-  });
+  return list
+    .filter((s): s is RTCIceServer => {
+      const u = (s as RTCIceServer)?.urls;
+      return typeof u === 'string' || (Array.isArray(u) && u.every((x) => typeof x === 'string'));
+    })
+    // 瀏覽器會擋 53 埠（Cloudflare 的清單裡有），留著只會多等一個逾時
+    .map((s) => ({ ...s, urls: (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => !/:53(\?|$)/.test(u)) }))
+    .filter((s) => (s.urls as string[]).length > 0);
 }
 
 let cached: Promise<RTCIceServer[]> | null = null;

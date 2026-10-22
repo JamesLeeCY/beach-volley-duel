@@ -107,7 +107,8 @@ describe('ICE 伺服器設定', async () => {
   const { parseIceServers } = await import('../src/net/ice');
   it('接受陣列或 { iceServers } 格式，略過格式不對的項目', () => {
     const a = [{ urls: 'turn:a:3478', username: 'u', credential: 'c' }, { urls: 5 }, null];
-    expect(parseIceServers(a)).toEqual([{ urls: 'turn:a:3478', username: 'u', credential: 'c' }]);
+    expect(parseIceServers(a)).toEqual([{ urls: ['turn:a:3478'], username: 'u', credential: 'c' }]);
+    expect(parseIceServers([{ urls: ['turn:t:53?transport=udp', 'turns:t:5349?transport=tcp'] }])).toEqual([{ urls: ['turns:t:5349?transport=tcp'] }]);
     expect(parseIceServers({ iceServers: [{ urls: ['stun:b', 'turn:b'] }] })).toEqual([{ urls: ['stun:b', 'turn:b'] }]);
     expect(parseIceServers('nope')).toEqual([]);
   });

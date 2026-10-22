@@ -1,0 +1,9 @@
+# 部署：npx wrangler deploy（在這個資料夾執行）
+# 金鑰：npx wrangler secret put TURN_KEY_ID、npx wrangler secret put TURN_KEY_API_TOKEN
+name = "taiwan-gold-volley-turn"
+main = "index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# 允許取得憑證的網頁來源（正式網站＋本機開發）
+ALLOWED_ORIGINS = "https://jamesleecy.github.io,http://localhost:5173"
