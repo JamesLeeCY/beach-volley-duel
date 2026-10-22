@@ -147,7 +147,7 @@ class App {
           this.touchSeen = true;
           this.resize();
         }
-        if (document.body.classList.contains('in-match')) this.touch.setVisible(true);
+        this.syncTouch();
         // 手機一碰畫面就進入全螢幕（需要使用者手勢）
         this.enterFullscreen();
       }
@@ -589,8 +589,8 @@ class App {
     const tablet2p = v && this.mode === 'local' && isTouchDevice() && Math.min(innerWidth, innerHeight) >= 600;
     this.touch.setLayout(tablet2p ? 'left' : 'full');
     this.touch2.setLayout('right');
-    this.touch2.setVisible(tablet2p);
-    this.touch.setVisible(v && isTouchDevice());
+    this.tablet2p = tablet2p;
+    this.syncTouch();
     // 前 5 場在觸控按鈕上顯示「跳」「擊球」
     this.touch.setLabels(this.settings.matchesPlayed < 5 ? [t('ctlJump'), t('ctlHit')] : null);
     this.touch2.setLabels(this.settings.matchesPlayed < 5 ? [t('ctlJump'), t('ctlHit')] : null);
@@ -723,8 +723,12 @@ class App {
     this.keyCapture = null;
     this.backHandler = back;
     this.overlay.replaceChildren(el);
+    // 暫停、結算等畫面出現時先收起觸控按鍵，不然點按鈕會被搖桿／擊球區吃掉
+    this.syncTouch();
     const first = el.querySelector<HTMLButtonElement>('button.primary, button');
-    if (first && !isTouchDevice()) first.focus({ preventScroll: true });
+    // 手機接上手把時也先選好第一顆按鈕，手把直接按確定就能用
+    const pad = !!navigator.getGamepads?.().some(Boolean);
+    if (first && (!isTouchDevice() || pad)) first.focus({ preventScroll: true });
   }
 
   private clearScreen() {
@@ -732,6 +736,17 @@ class App {
     this.menuKeyHandler = null;
     this.backHandler = null;
     this.overlay.replaceChildren();
+    this.syncTouch();
+  }
+
+  /** 平板同機雙人（左右各一組觸控按鍵） */
+  private tablet2p = false;
+
+  /** 觸控按鍵只在比賽進行中、沒有選單畫面時顯示 */
+  private syncTouch() {
+    const on = document.body.classList.contains('in-match') && isTouchDevice() && !this.screenName;
+    this.touch.setVisible(on);
+    this.touch2.setVisible(on && this.tablet2p);
   }
 
   /** 標題：一個「開始」直接和電腦打，其他玩法收在「更多玩法」 */

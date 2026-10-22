@@ -65,3 +65,32 @@ test('touch: holding the stick and tapping anywhere on the right half dives', as
   await page.waitForFunction(() => [3, 4].includes((window as any).app.state.players[0].state), null, { timeout: 1500 });
   await ctx.close();
 });
+
+test('touch: pause and result screens can be tapped (touch controls never cover them)', async ({ browser }) => {
+  const { ctx, page } = await phone(browser);
+  const tap = async (name: string) => {
+    const b = page.getByRole('button', { name, exact: true });
+    const r = (await b.boundingBox())!;
+    await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2);
+  };
+  // 比賽中點暫停鈕 → 暫停畫面出現時觸控按鍵要收起來
+  await tap('❚❚');
+  await expect.poll(() => app(page, (a) => a.screenName)).toBe('pause');
+  await expect(page.locator('.touch-controls').first()).not.toHaveClass(/visible/);
+  await tap('Resume');
+  await expect.poll(() => app(page, (a) => a.paused)).toBe(false);
+  await expect(page.locator('.touch-controls').first()).toHaveClass(/visible/);
+
+  // 打完的結算畫面：點「再來一局」
+  await page.evaluate(() => {
+    const a = (window as any).app;
+    a.startLocalMatch('cpu');
+    a.running = false;
+    a.state.score = [5, 1];
+    a.showResult(0);
+  });
+  await expect(page.locator('.touch-controls').first()).not.toHaveClass(/visible/);
+  await tap('Rematch');
+  await expect.poll(() => app(page, (a) => [a.resultShown, a.state.score])).toEqual([false, [0, 0]]);
+  await ctx.close();
+});

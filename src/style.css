@@ -63,6 +63,8 @@ body {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  /* 選單畫面要在觸控按鍵（z-index 4）上面，按鈕才點得到 */
+  z-index: 8;
 }
 
 .screen {
