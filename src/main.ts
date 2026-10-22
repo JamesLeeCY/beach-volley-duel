@@ -20,7 +20,7 @@ import {
   keyLabel, keymapSide, menuAction, rebind, SOLO_KEYMAP, type KeyAction, type KeyMap,
 } from './input/keyboard';
 import { initAnalytics, track } from './analytics';
-import { CONSERVATION, CONSERVATION_SOURCE, DEX, HABITAT_ROWS, HIDDEN_CHARACTER, iucnLabel, isHome, protectedLabel, redlistLabel, type Habitat } from './data/dex';
+import { CONSERVATION, CONSERVATION_SOURCE, DEX, HABITAT_ROWS, HIDDEN_CHARACTER, iucnLabel, isHome, protectedLabel, redlistLabel, supportFor, type Habitat } from './data/dex';
 import { dailyFor, emojiLine, localDate, type Daily, type DailyRule, type Rally } from './ui/daily';
 import { ROUTE, TOUR_TARGET, nextStation, stationHost, stationLevel } from './ui/tour';
 import { tourMapSvg } from './ui/tourmap';
@@ -1848,6 +1848,7 @@ class App {
           entry ? row(t('dexHome'), entry.home.map((s) => t(App.SCENE_LABELS[s])).join('、')) : null,
         ) : null,
         entry ? h('ul', { class: 'trivia' }, ...entry.trivia.map((x) => h('li', {}, x[lang]))) : null,
+        this.supportBox(id),
         con ? h('p', { class: 'help source' }, t('dexSource', { date: CONSERVATION_SOURCE.fetched })) : null,
       );
     const modal: HTMLDivElement = h('div', { class: 'modal', onclick: (e: Event) => e.target === modal && close() },
@@ -1860,6 +1861,24 @@ class App {
     this.modalClose = close;
     $('#app').append(modal);
     modal.querySelector<HTMLButtonElement>('button.primary')?.focus({ preventScroll: true });
+  }
+
+  /**
+   * 圖鑑卡片的「支持牠的保育」：連到保育團體自己的捐款頁。
+   * 錢不經過遊戲；用外部視窗開啟，只記錄「點了哪個團體」的事件。
+   */
+  private supportBox(id: string): HTMLElement | null {
+    const orgs = supportFor(id);
+    if (!orgs.length || !this.isUnlocked(id)) return null;
+    const lang = getLang();
+    return h('div', { class: 'support-box' },
+      h('b', {}, `💚 ${t('supportTitle')}`),
+      h('div', { class: 'menu row' }, ...orgs.map((o) => button(o.name[lang], () => {
+        track('support_click', { species: id, org: o.name.en });
+        window.open(o.url, '_blank', 'noopener');
+      }, 'small support'))),
+      h('p', { class: 'help' }, t('supportNote')),
+    );
   }
 
   /** 目前開著的圖鑑卡片（Esc 先關它） */

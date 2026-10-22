@@ -117,3 +117,14 @@ describe('環島巡迴賽', () => {
     expect(nextStation(ROUTE.map((s) => s.scene))).toBe(-1);
   });
 });
+
+describe('支持牠的保育', async () => {
+  const { supportFor } = await import('../src/data/dex');
+  it('16 隻都有至少一個保育團體，連結都是 https', () => {
+    for (const id of index) {
+      const orgs = supportFor(id);
+      expect(orgs.length, id).toBeGreaterThan(0);
+      for (const o of orgs) expect(o.url, id).toMatch(/^https:\/\//);
+    }
+  });
+});

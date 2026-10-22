@@ -1833,3 +1833,27 @@ body:not(.want-landscape) .rotate-cancel {
 .info-btns {
   flex-wrap: wrap;
 }
+
+/* 圖鑑卡片的「支持牠的保育」 */
+.support-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(93, 219, 123, 0.1);
+  border: 1px solid rgba(93, 219, 123, 0.35);
+}
+
+.support-box b {
+  color: var(--ok);
+}
+
+.support-box .menu {
+  justify-content: flex-start;
+  margin-top: 6px;
+}
+
+button.support {
+  background: #3f9a5a;
+  border-color: #2f7a46;
+  color: #fff;
+}

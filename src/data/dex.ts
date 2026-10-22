@@ -25,6 +25,17 @@ export interface DexEntry {
   trivia: Text[];
 }
 
+/** 保育團體：圖鑑卡片上「支持牠的保育」連到團體自己的捐款頁（遊戲不經手任何款項） */
+export interface SupportOrg {
+  name: Text;
+  url: string;
+}
+
+/** 每種動物對應的保育團體（見 SUPPORT，下方填入經過確認的連結） */
+export function supportFor(id: string): SupportOrg[] {
+  return SUPPORT[id] ?? [];
+}
+
 const T = (zh: string, en: string): Text => ({ 'zh-TW': zh, en });
 
 export const DEX: Record<string, DexEntry> = {
@@ -204,3 +215,42 @@ export function habitatOf(id: string): Habitat | null {
 export function isHome(id: string, scene: SceneId) {
   return DEX[id]?.home.includes(scene) ?? false;
 }
+
+// 「支持牠的保育」：每個連結都是團體自己的官方捐款頁，上線前已確認網址可開啟。
+// 沒有專門團體的物種（梅花鹿、鼯鼠、帝雉、五色鳥、諸羅樹蛙、櫻花鉤吻鮭、雲豹）連到同類群或棲地保育的團體。
+// 2026-10-22 逐一開啟確認（HTTP 200、頁面是該團體自己的捐款頁）。
+const BEAR: SupportOrg = { name: T('台灣黑熊保育協會', 'Taiwan Black Bear Conservation Association'), url: 'https://www.taiwanbear.org.tw/donations/' };
+const LEOPARD_CAT: SupportOrg = { name: T('台灣石虎保育協會', 'Leopard Cat Association of Taiwan'), url: 'https://leopardcat.neticrm.tw/civicrm/contribute/transact?reset=1&id=3' };
+const WILDONE: SupportOrg = { name: T('野灣野生動物保育協會', 'WildOne Wildlife Conservation Association'), url: 'https://www.wildonetaiwan.org/donation' };
+const MACAQUE: SupportOrg = {
+  name: T('台灣獼猴共存推廣協會', 'Taiwan Macaque Coexistence Association'),
+  url: 'https://twmonkey.com/%e5%8f%b0%e7%81%a3%e7%8d%bc%e7%8c%b4-%e6%94%af%e6%8c%81%e6%88%91%e5%80%91/',
+};
+const PTRC: SupportOrg = { name: T('屏科大保育類野生動物收容中心', 'Pingtung Rescue Center for Endangered Wild Animals'), url: 'https://payflow.npust.edu.tw/Home/PayForm?depID=6&Items=I00006' };
+const KINMEN: SupportOrg = { name: T('金門縣野生動物救援暨保育協會', 'Kinmen Wildlife Rescue and Conservation Association'), url: 'https://www.kwrca.org.tw/donate' };
+const SOW: SupportOrg = { name: T('荒野保護協會', 'Society of Wilderness'), url: 'https://www.sow.org.tw/donate' };
+const BIRD: SupportOrg = { name: T('中華民國野鳥學會', 'Chinese Wild Bird Federation'), url: 'https://www.bird.org.tw/civicrm/contribute/transact?reset=1&id=1' };
+const WBST: SupportOrg = { name: T('台北市野鳥學會', 'Wild Bird Society of Taipei'), url: 'https://www.wbst.org.tw/donate' };
+const RAPTOR: SupportOrg = { name: T('台灣猛禽研究會', 'Raptor Research Group of Taiwan'), url: 'https://raptor.org.tw/civicrm/contribute/transact?reset=1&id=4' };
+const SPOONBILL: SupportOrg = { name: T('台灣黑面琵鷺保育學會', 'Taiwan Black-faced Spoonbill Conservation Association'), url: 'https://donate.newebpay.com/taiwanbfsa/BFSAsingledonation' };
+const CETACEAN: SupportOrg = { name: T('中華鯨豚協會', 'Taiwan Cetacean Society'), url: 'https://whale.neticrm.tw/civicrm/contribute/transact?reset=1&id=4' };
+const TURTLESPOT: SupportOrg = { name: T('海龜點點名協會', 'TurtleSpot Taiwan'), url: 'https://turtlespottw.org/article/donationinfo' };
+
+const SUPPORT: Record<string, SupportOrg[]> = {
+  yueyue: [BEAR],
+  shishi: [LEOPARD_CAT],
+  meimei: [WILDONE],
+  hoho: [MACAQUE],
+  glidey: [WILDONE],
+  jiajia: [WILDONE, PTRC],
+  tata: [KINMEN],
+  baobao: [SOW],
+  mikado: [BIRD],
+  lanlan: [WBST],
+  caicai: [BIRD],
+  ying: [RAPTOR],
+  pipi: [SPOONBILL],
+  wawa: [SOW],
+  sakura: [SOW],
+  guigui: [CETACEAN, TURTLESPOT],
+};
