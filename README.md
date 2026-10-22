@@ -79,6 +79,10 @@ npm run fetch:taicol # 從 TaiCOL 重新抓 16 種動物的保育資料（src/da
 - **動物圖鑑**：學名、臺灣特有、保育類、臺灣紅皮書、IUCN、CITES、主場、冷知識，資料出處為 TaiCOL（CC BY 4.0）。每張卡片有「支持牠的保育」按鈕，連到相關保育團體自己的捐款頁（遊戲不經手任何款項；連結清單在 `src/data/dex.ts` 的 `SUPPORT`）。
 - **成就與任務**：10 個成就、每日 3 個小任務（把玩家帶到還沒玩過的角色與場景），獎勵是頭上的造型（帽子、墨鏡、花圈等，只有外觀）。進度存在本機，可在設定頁「進度備份」匯出／匯入進度碼。
 
+## 請作者喝杯咖啡（選用）
+
+設定頁、主選單下方、打完 5 場後的結算畫面與環島證書會出現小小的「☕ 請作者喝杯咖啡」，先說明這是支持作者（不是保育捐款），再開綠界「實況主收款」的贊助頁。在 GitHub repo 的 Variables 設定 `TIP_URL`（例如 `https://p.ecpay.com.tw/xxxxxx`）後重新部署就會出現；沒設定就不顯示。
+
 ## 成效追蹤（選用）
 
 程式內建輕量追蹤（不用 cookie、不送個人資料），漏斗事件：`visit`（含距第一次來訪的天數，用來算 D1／D7）→ `match_start` → `match_end`（含比分）→ `rematch` → `share`，另有 `tutorial_done`、`achievement`、`unlock`。預設關閉；在 GitHub repo 的 **Settings → Secrets and variables → Actions → Variables** 設定其中一個即可開啟：

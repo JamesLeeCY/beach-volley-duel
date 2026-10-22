@@ -113,3 +113,14 @@ describe('ICE 伺服器設定', async () => {
     expect(parseIceServers('nope')).toEqual([]);
   });
 });
+
+describe('請作者喝杯咖啡', async () => {
+  const { validTipUrl } = await import('../src/ui/tip');
+  it('只接受 https 網址，沒設定或格式錯誤就不顯示', () => {
+    expect(validTipUrl('https://p.ecpay.com.tw/FD1788B')).toBe('https://p.ecpay.com.tw/FD1788B');
+    expect(validTipUrl('http://p.ecpay.com.tw/FD1788B')).toBeNull();
+    expect(validTipUrl('javascript:alert(1)')).toBeNull();
+    expect(validTipUrl('')).toBeNull();
+    expect(validTipUrl(undefined)).toBeNull();
+  });
+});

@@ -29,6 +29,7 @@ import {
   saveProgress, type Cosmetic, type MatchRecord, type Task, type TaskKind,
 } from './ui/progress';
 import { paintHat } from './render/extras';
+import { TIP_AFTER_MATCHES, tipUrl } from './ui/tip';
 import { DEFAULT_PAD_MAP, DPAD_BUTTONS, applyPadMap, padButtonLabel, pressedButtons, readGamepad } from './input/gamepad';
 import { TouchControls, isTouchDevice } from './input/touch';
 import {
@@ -826,6 +827,7 @@ class App {
         button(t('help'), () => this.showHelp(), 'secondary small'),
       ),
       h('div', { style: 'margin-top:10px' }, langBtn),
+      this.tipButton('tip-link'),
     );
     this.show('modes', el, () => this.showTitle());
   }
@@ -1244,6 +1246,7 @@ class App {
         this.humanSide = v;
         save();
       })),
+      tipUrl() ? row(t('tipTitle'), h('div', { class: 'seg' }, this.tipButton('small'))) : null,
       row(t('progressCode'), h('div', { class: 'seg' },
         button(t('progressExport'), async () => {
           try {
@@ -1550,6 +1553,7 @@ class App {
             }, 'secondary small') : null,
             button(t('toTitle'), () => this.quitToModes(), 'secondary small'),
           ),
+          this.settings.matchesPlayed >= TIP_AFTER_MATCHES ? this.tipButton('tip-link') : null,
         ),
       ),
     );
@@ -1881,6 +1885,45 @@ class App {
     );
   }
 
+  /** 「請作者喝杯咖啡」按鈕；沒設定贊助網址時回傳 null（不顯示） */
+  private tipButton(cls: string): HTMLButtonElement | null {
+    if (!tipUrl()) return null;
+    return button(`☕ ${t('tipBtn')}`, () => this.openTipCard(), cls);
+  }
+
+  /**
+   * 先說明這是支持作者（不是保育捐款），再開綠界的贊助頁。
+   * 錢由綠界處理，遊戲不經手；只記錄「打開說明」「前往付款」兩個事件。
+   */
+  private openTipCard() {
+    const url = tipUrl();
+    if (!url) return;
+    track('tip_open');
+    const close = () => {
+      modal.remove();
+      this.modalClose = null;
+    };
+    const modal: HTMLDivElement = h('div', { class: 'modal', onclick: (e: Event) => e.target === modal && close() },
+      h('div', { class: 'screen tip-card' },
+        h('h2', {}, `☕ ${t('tipTitle')}`),
+        h('p', {}, t('tipText')),
+        h('p', { class: 'help' }, t('tipNote')),
+        h('div', { class: 'menu' },
+          button(t('tipPay'), () => {
+            track('tip_click');
+            window.open(url, '_blank', 'noopener');
+            close();
+          }, 'primary'),
+          button(t('tipLater'), close, 'secondary'),
+        ),
+      ),
+    );
+    this.modalClose?.();
+    this.modalClose = close;
+    $('#app').append(modal);
+    modal.querySelector<HTMLButtonElement>('button.primary')?.focus({ preventScroll: true });
+  }
+
   /** 目前開著的圖鑑卡片（Esc 先關它） */
   private modalClose: (() => void) | null = null;
 
@@ -2030,6 +2073,7 @@ class App {
           }
         }, 'secondary small'),
         button(t('back'), () => this.showTour(), 'secondary small'),
+        this.tipButton('small secondary'),
       ),
     );
     this.show('certificate', el, () => this.showTour());

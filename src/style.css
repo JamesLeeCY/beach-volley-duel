@@ -1857,3 +1857,21 @@ button.support {
   border-color: #2f7a46;
   color: #fff;
 }
+
+/* 「請作者喝杯咖啡」：小小的文字連結，不搶主要按鈕的風頭 */
+button.tip-link {
+  display: block;
+  margin: 10px auto 0;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tip-card {
+  max-width: min(92vw, 440px);
+}

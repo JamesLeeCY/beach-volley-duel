@@ -51,6 +51,8 @@ jobs:
           VITE_TURN_URLS: ${{ vars.TURN_URLS }}
           VITE_TURN_USER: ${{ vars.TURN_USER }}
           VITE_TURN_CRED: ${{ vars.TURN_CRED }}
+          # 「請作者喝杯咖啡」的綠界實況主收款網址（選用，沒設定就不顯示按鈕）
+          VITE_TIP_URL: ${{ vars.TIP_URL }}
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:
