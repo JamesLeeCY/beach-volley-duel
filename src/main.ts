@@ -475,7 +475,13 @@ class App {
 
   private handleEvents(events: GameEvent[], mirrorOverride: boolean) {
     const mirror = mirrorOverride;
-    this.renderer.spawnEffects(events, mirror);
+    // 特效強度：誇張（預設）或簡潔；選單背景的 AI 示範賽不顯示狀聲詞
+    const fx = this.renderer.fx;
+    const lite = this.settings.fx === 'lite';
+    fx.amount = lite ? 0.5 : 1;
+    fx.showWords = !lite && this.mode !== 'demo';
+    fx.lang = getLang();
+    this.renderer.spawnEffects(events, mirror, this.chars);
     if (this.mode === 'demo' && this.screenName !== 'title') return;
     for (const e of events) audio.play(e.type, mirror ? 432 - e.x : e.x);
   }
@@ -492,6 +498,7 @@ class App {
 
   private startDemo() {
     this.mode = 'demo';
+    this.renderer.clearEffects();
     this.rollLook();
     this.cfg = defaultConfig({ targetScore: 99 });
     const seed = (Math.random() * 2 ** 31) | 0;
@@ -508,6 +515,7 @@ class App {
 
   private startLocalMatch(mode: 'cpu' | 'local' | 'practice', opts: { target?: number; scene?: SceneId } = {}) {
     this.mode = mode;
+    this.renderer.clearEffects();
     this.rollLook();
     if (opts.scene) {
       this.scene = opts.scene;
@@ -1241,6 +1249,8 @@ class App {
       row(t('vibrate'), onOff('vibrate')),
       row(t('selfLeft'), onOff('selfLeft')),
       row(t('showFps'), onOff('showFps')),
+      row(t('fxOpt'), segmented([{ value: 'full', label: t('fxFull') }, { value: 'lite', label: t('fxLite') }],
+        s.fx, (v) => { s.fx = v as Settings['fx']; save(); })),
       row(t('cpuSide'), segmented<0 | 1>([{ value: 0, label: t('left') }, { value: 1, label: t('right') }], s.cpuSide, (v) => {
         s.cpuSide = v;
         this.humanSide = v;

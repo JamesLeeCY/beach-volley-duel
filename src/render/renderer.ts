@@ -4,6 +4,7 @@ import { Phase, PState, type GameEvent, type GameState, type PlayerState } from 
 import { Scenery, type SceneId } from './scenery';
 import { animOf, type AnimName, type CharacterPack } from '../characters/registry';
 import { paintBoba, paintHat, paintMelon } from './extras';
+import { Fx } from './fx';
 
 const FP = C.FP;
 const W = C.FIELD_W;
@@ -161,6 +162,21 @@ export class Renderer {
   /** 每位角色目前的短暫反應動作（事件觸發，純視覺） */
   private react: ({ name: AnimName; start: number; dur: number } | null)[] = [null, null];
   private shake = 0;
+  /** 扣殺時的白色閃光與鏡頭「推近」（逐幀衰減） */
+  private flashA = 0;
+  private flashColor = '#ffffff';
+  private punchV = 0;
+  /** 每位角色在畫面上的位置與面向（給得分特效用） */
+  private pos: { x: number; y: number; face: number }[] = [{ x: 100, y: 220, face: 1 }, { x: 330, y: 220, face: -1 }];
+  /** 角色特效（每隻動物各自的粒子、狀聲詞） */
+  readonly fx = new Fx({
+    shake: (n) => (this.shake = Math.max(this.shake, n)),
+    flash: (a, c) => {
+      this.flashA = Math.max(this.flashA, a);
+      this.flashColor = c ?? '#ffffff';
+    },
+    punch: (n) => (this.punchV = Math.max(this.punchV, n)),
+  });
   private viewW = W;
   private viewH = H;
   private offX = 0;
@@ -208,7 +224,7 @@ export class Renderer {
   }
 
   /** 從事件產生特效（只在新幀呼叫一次） */
-  spawnEffects(events: GameEvent[], mirror: boolean) {
+  spawnEffects(events: GameEvent[], mirror: boolean, chars: [string, string] = ['', '']) {
     const now = performance.now();
     for (const e of events) {
       // 角色的短暫反應動作：接球、得分歡呼、失分嚇一跳
@@ -229,7 +245,22 @@ export class Renderer {
       } else if (e.type === 'bump') {
         this.burst(x, e.y, 4, '#ffffff', 2, 0);
       }
+      // 每隻動物自己的特效
+      if (e.who < 0 || e.who > 1) continue;
+      const me = this.pos[e.who];
+      const id = chars[e.who];
+      if (e.type === 'spike' || e.type === 'bump') this.fx.emit(e.type, id, x, e.y, me.face);
+      else if (e.type === 'jump' || e.type === 'dive') this.fx.emit(e.type, id, x, e.y, me.face);
+      else if (e.type === 'score') this.fx.emit('score', id, me.x, me.y, me.face);
     }
+  }
+
+  /** 換場（新比賽、回選單）時清掉殘留的特效 */
+  clearEffects() {
+    this.fx.clear();
+    this.flashA = 0;
+    this.punchV = 0;
+    this.shake = 0;
   }
 
   private burst(x: number, y: number, n: number, color: string, speed: number, upBias: number) {
@@ -264,6 +295,12 @@ export class Renderer {
     }
     ctx.save();
     ctx.translate(sx, sy);
+    if (this.punchV > 0.01) {
+      const k2 = 1 + this.punchV * 0.035;
+      ctx.translate(W / 2, H / 2);
+      ctx.scale(k2, k2);
+      ctx.translate(-W / 2, -H / 2);
+    }
     this.drawBackground(time);
 
     const bx = mx(lerp(prev.ball.x, cur.ball.x));
@@ -286,6 +323,7 @@ export class Renderer {
       const x = mx(lerp(prev.players[i].x, p.x));
       const y = lerp(prev.players[i].y, p.y);
       const facing = view.mirror ? -p.facing : p.facing;
+      this.pos[i] = { x, y, face: facing };
       this.drawPlayer(view.chars[i], p, x, y, facing, time, i === 1 && view.hueShift2, i, view.hats?.[i] ?? null);
     }
 
@@ -303,6 +341,9 @@ export class Renderer {
         pt.life++;
       }
       this.particles = this.particles.filter((pt) => pt.life < pt.max);
+      this.fx.step();
+      this.flashA *= 0.82;
+      this.punchV *= 0.8;
     }
     this.trail.forEach((tpt, i) => {
       ctx.globalAlpha = ((i + 1) / this.trail.length) * 0.35;
@@ -321,6 +362,7 @@ export class Renderer {
       ctx.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
     }
     ctx.globalAlpha = 1;
+    this.fx.draw(ctx);
 
     this.scenery.drawOverlay(ctx, time, -this.offX, -this.offY, W + this.offX, H + this.offY);
     if (view.night) {
@@ -328,6 +370,12 @@ export class Renderer {
       this.drawNight(time, bx, by, pts);
     }
 
+    if (this.flashA > 0.02) {
+      ctx.globalAlpha = this.flashA;
+      ctx.fillStyle = this.flashColor;
+      ctx.fillRect(-this.offX - 8, -this.offY - 8, this.viewW + 16, this.viewH + 16);
+      ctx.globalAlpha = 1;
+    }
     // 比分
     const s0 = cur.score[view.mirror ? 1 : 0];
     const s1 = cur.score[view.mirror ? 0 : 1];

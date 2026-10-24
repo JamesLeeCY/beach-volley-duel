@@ -43,6 +43,8 @@ export interface Settings {
   difficulty: Difficulty;
   /** 打完幾場：前幾場顯示按鍵提示與觸控按鈕文字 */
   matchesPlayed: number;
+  /** 角色特效：誇張（閃光、震動、狀聲詞）或簡潔（粒子減半、不閃不震） */
+  fx: 'full' | 'lite';
 }
 
 export const KEYS_VERSION = 2;
@@ -75,6 +77,7 @@ export function defaultSettings(): Settings {
     cpuSide: 0,
     difficulty: 'beginner',
     matchesPlayed: 0,
+    fx: 'full',
   };
 }
 
@@ -109,6 +112,7 @@ export function loadSettings(): Settings {
         difficulty: ['beginner', 'easy', 'normal', 'hard'].includes(saved?.difficulty) ? saved.difficulty : 'easy',
         // 舊版存檔沒有這個欄位：當成老玩家，不再顯示新手提示
         matchesPlayed: Number.isFinite(saved?.matchesPlayed) ? saved.matchesPlayed : 99,
+        fx: saved?.fx === 'lite' ? 'lite' : 'full',
       };
     }
   } catch {
