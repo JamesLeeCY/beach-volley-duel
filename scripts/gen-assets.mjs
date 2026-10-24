@@ -1,5 +1,5 @@
 // 產生內建角色的精靈圖、頭像、manifest 與 PWA 圖示。
-// 全部由程式繪製（原創角色），畫風走溫暖手繪感：三階柔和光影、暖色描邊、閃亮眼睛與腮紅。
+// 全部由程式繪製（原創角色），畫風走吉卜力式手繪：平塗＋一塊邊緣清楚的陰影（不做立體漸層）、暖褐色細線、毛與羽毛的筆觸。
 // 執行：npm run gen:assets
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -334,26 +334,24 @@ function smooth(e0, e1, x) {
 
 const LIGHT = (() => { const v = [-0.55, -0.65, 0.5]; const n = Math.hypot(...v); return v.map((x) => x / n); })();
 
-/** 手繪上色：一種柔和陰影＋暖色受光＋筆刷顆粒；px/py 是像素座標（做質感用） */
+/**
+ * 吉卜力式的平塗：大部分是底色，背光那一側一塊邊緣清楚的陰影（偏冷的紫褐），
+ * 沒有漸層、沒有高光，看起來像手繪賽璐璐而不是立體模型；再加一點點水彩紙的顆粒。
+ * px/py 是像素座標（做質感用）
+ */
 function paint(base, nx, ny, nz, px, py, o = {}) {
   const B = hex(base);
   const d = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
-  const S = mix(mix(B, [0, 0, 0], 0.3), hex(o.shadow ?? '#5a4a7a'), 0.24);
-  let c = mix(S, B, smooth(0.16, 0.36, d));
-  c = mix(c, hex(o.light ?? '#fff1d6'), smooth(0.72, 0.98, d) * 0.3);
-  // 筆刷質感：只保留橫向的筆觸（每 2×5 像素一塊），顏色取 4 的倍數，讓 PNG 壓得小
-  const g = (hash2(Math.floor(px * 0.25), Math.floor(py * 0.14)) - 0.5) * 0.08;
+  const S = mix(mix(B, [0, 0, 0], 0.18), hex(o.shadow ?? '#5a4a7a'), 0.22);
+  const c = d < 0.2 ? S : B;
+  // 紙張顆粒：很淡、每 2×5 像素一塊，顏色取 4 的倍數，讓 PNG 壓得小
+  const g = (hash2(Math.floor(px * 0.25), Math.floor(py * 0.14)) - 0.5) * 0.045;
   return [0, 1, 2].map((i) => Math.max(0, Math.min(252, Math.round((c[i] * (1 + g)) / 4) * 4))).concat([255]);
 }
 
 /** 圓形部位（頭、身體、手腳） */
 function ball(P, cx, cy, rx, ry, base, o = {}) {
-  P.raw(cx, cy, rx, ry, (nx, ny, d2, px, py) => {
-    const c = paint(base, nx, ny, Math.sqrt(Math.max(0, 1 - d2)), px, py, o);
-    // 水彩積色：靠近輪廓稍深
-    const edge = d2 > 0.84 ? 0.93 : 1;
-    return [c[0] * edge, c[1] * edge, c[2] * edge, 255].map(Math.round);
-  });
+  P.raw(cx, cy, rx, ry, (nx, ny, d2, px, py) => paint(base, nx, ny, Math.sqrt(Math.max(0, 1 - d2)), px, py, o));
 }
 
 /** 平面部位（耳朵、喙、羽毛、角）：依位置估一個斜面 */
@@ -382,6 +380,30 @@ function tube(P, pts, r0, r1, base, o = {}) {
     const r = r0 + (r1 - r0) * t;
     ball(P, x, y, r, r, base, o);
   }
+}
+
+/** 毛的筆觸：沿著橢圓邊緣（from～to 弧度，畫布座標 y 朝下）畫一圈短短的手繪毛線 */
+function furLines(P, cx, cy, rx, ry, color, n, from = Math.PI * 0.4, to = Math.PI * 1.35, w = 0.5) {
+  for (let i = 0; i < n; i++) {
+    const a = from + ((to - from) * (i + 0.5)) / n;
+    const c = Math.cos(a), s = Math.sin(a);
+    const l0 = 0.68 + ((i * 37) % 7) * 0.025;
+    P.line(cx + c * rx * l0, cy + s * ry * l0, cx + c * rx * 0.94 - s * 0.7, cy + s * ry * 0.94 + c * 0.7, color, w);
+  }
+}
+
+/** 羽毛：一排排鱗狀的小弧線（奇數排錯開半格） */
+function feathers(P, x0, y0, cols, rows, r, color, w = 0.5) {
+  for (let j = 0; j < rows; j++)
+    for (let i = 0; i < cols - (j % 2); i++) {
+      const x = x0 + i * r * 1.8 + (j % 2) * r * 0.9, y = y0 + j * r * 1.1;
+      P.curve(x - r, y, x, y + r, x + r, y, color, w);
+    }
+}
+
+/** 爪子：從 (x, y) 往 dir 方向的 n 根小爪 */
+function claws(P, x, y, n, color, dx = 1.6, dy = 0.8) {
+  for (let i = 0; i < n; i++) P.line(x, y + i * 0.9 - (n - 1) * 0.45, x + dx, y + i * 0.9 - (n - 1) * 0.45 + dy, color, 0.6);
 }
 
 /** 吉卜力式的豆豆眼（貓科、猛禽有顏色的虹膜） */
@@ -465,6 +487,7 @@ function creature(P, p, o) {
   limb([cx - 4, by - 5], arm2, 3, 3.2);
   ball(P, cx, by, (o.bodyRx ?? 12.5) * p.sx, (o.bodyRy ?? 12) * p.sy, fur, sh);
   o.belly?.(cx, by);
+  o.texture?.(cx, by, (o.bodyRx ?? 12.5) * p.sx, (o.bodyRy ?? 12) * p.sy);
   const arm = [cx + p.arm[0] * 0.85, 42 + p.bob * 0.7 + p.arm[1] * 0.8];
   const raised = p.arm[1] < -10;
   if (raised) {
@@ -476,6 +499,7 @@ function creature(P, p, o) {
   const r2 = (n) => Math.round(n * 10) / 10;
   lastHead = [r2(hx), r2(hy - (o.headRy ?? 14) * p.sy), r2((o.headR ?? 15) * p.sx)];
   o.head?.(hx, hy);
+  o.headTexture?.(hx, hy, (o.headR ?? 15) * p.sx, (o.headRy ?? 14) * p.sy);
   const ey = hy + (o.eyeY ?? 0) * p.sy;
   const eo = { size: o.eyeSize ?? 1, iris: o.iris, slit: o.slit, brow: o.brow, skin: o.skin ?? o.headColor ?? fur };
   eye(P, hx + (o.eyeX1 ?? 3), ey, p.eyes, eo);
@@ -486,6 +510,7 @@ function creature(P, p, o) {
     limb([cx + 3, by - 5], arm, 3, 3.6);
     o.hand?.(arm[0], arm[1]);
   }
+  o.detail?.(hx, hy, cx, by);
 }
 
 const CHARS = {
@@ -500,6 +525,12 @@ const CHARS = {
       const black = '#3a3638';
       const sh = { shadow: '#20182a', light: '#8a8090' };
       creature(P, p, {
+        // 粗硬的黑毛、腳上的白爪
+        texture: (cx, by, rx, ry) => furLines(P, cx, by, rx, ry, '#141016', 16),
+        headTexture: (hx, hy, rx, ry) => furLines(P, hx, hy, rx, ry, '#141016', 9, Math.PI * 0.85, Math.PI * 1.7),
+        detail: (hx, hy, cx, by) => {
+          for (const lx of [-5.5, 5.5]) claws(P, cx + lx + 4.6, 60, 3, '#e8e0d0', 1.1, 0.3);
+        },
         fur: black, shade: sh, brow: '#101016', headR: 16, headRy: 15, bodyRx: 13.5, bodyRy: 12.5,
         belly: (cx, by) => slab(P, [[cx - 7, by - 9], [cx + 1, by - 1], [cx + 10, by - 10], [cx + 10, by - 6.5], [cx + 1, by + 3], [cx - 7, by - 5.5]], '#ece6d6'),
         behind: (hx, hy) => {
@@ -524,6 +555,17 @@ const CHARS = {
       // 石虎：灰黃褐底色上的黑色斑點、額頭兩條白線、耳背黑色帶白斑、尾巴有環紋、金色眼睛
       const fur = '#b0946a', spot = '#3a2e24', white = '#f2ece0';
       creature(P, p, {
+        // 身上一排排的黑斑、臉頰兩條黑線、眼睛下的白線
+        texture: (cx, by, rx, ry) => {
+          furLines(P, cx, by, rx, ry, '#7a6448', 12);
+          for (const [dx, dy] of [[-10, -6], [-6, -1], [-11, 2], [-3, 7], [-8, 8], [1, -9], [-12, -2], [-5, -9]]) ball(P, cx + dx, by + dy, 1.1, 0.9, '#3a2e24');
+        },
+        headTexture: (hx, hy) => {
+          P.line(hx + 1, hy + 3, hx - 5, hy + 4.5, '#3a2e24', 0.8);
+          P.line(hx + 1, hy + 5.5, hx - 4, hy + 8, '#3a2e24', 0.8);
+          P.curve(hx + 1, hy + 2.6, hx + 3.5, hy + 3.6, hx + 6, hy + 2.4, '#f2ece0', 0.6);
+          for (const [dx, dy] of [[-2, -8], [3, -9], [-6, -4]]) P.dot(hx + dx, hy + dy, '#3a2e24');
+        },
         fur, iris: '#d8a83a', brow: '#3a2a1a',
         belly: (cx, by) => {
           ball(P, cx + 3, by + 1, 7.5 * p.sx, 8 * p.sy, white);
@@ -562,6 +604,16 @@ const CHARS = {
       // 台灣梅花鹿：栗色身體上的白色梅花斑、小鹿角、大耳朵、溫柔的大眼睛、黑鼻頭、白色臀斑
       const coat = '#b8743e', spot = '#f4ecd8', cream = '#efe2c8';
       creature(P, p, {
+        // 背上的深色背線、兩排梅花斑、分趾的蹄
+        texture: (cx, by, rx, ry) => {
+          furLines(P, cx, by, rx, ry, '#8a5428', 10);
+          P.curve(cx - 12, by - 5, cx - 4, by - 12.5, cx + 7, by - 11, '#7a4422', 1.1);
+          for (const [dx, dy] of [[-10, -7.5], [-7, -9.5], [-3, -10.5], [1, -10.5], [-12, -3.5], [-9, -4.5], [-6, -6], [-2, -7]]) ball(P, cx + dx, by + dy, 0.95, 0.8, '#f4ecd8');
+        },
+        headTexture: (hx, hy, rx, ry) => furLines(P, hx, hy, rx, ry, '#8a5428', 6, Math.PI * 1.0, Math.PI * 1.6),
+        detail: (hx, hy, cx, by) => {
+          for (const lx of [-5.5, 5.5]) P.line(cx + lx + 1.6, 58.6, cx + lx + 1.6, 61.6, '#1a120e', 0.5);
+        },
         fur: coat, legColor: '#a8683a', footColor: '#4a3428', legR: 2.4, footRx: 3.2, eyeSize: 1.25, brow: '#5a3a1a',
         headR: 13.5, headRy: 13, headY: 25,
         belly: (cx, by) => {
@@ -598,6 +650,10 @@ const CHARS = {
       // 台灣獼猴：灰褐色毛、粉色的臉、圓耳、長尾巴
       const fur = '#8a8070', face = '#e2b0a0';
       creature(P, p, {
+        // 蓬鬆的灰褐毛、頭頂的亂毛、手指
+        texture: (cx, by, rx, ry) => furLines(P, cx, by, rx, ry, '#5e564a', 18, Math.PI * 0.3, Math.PI * 1.5),
+        headTexture: (hx, hy, rx, ry) => furLines(P, hx, hy, rx, ry, '#5e564a', 12, Math.PI * 0.75, Math.PI * 1.95),
+        hand: (x, y) => claws(P, x + 1, y, 3, '#c89a8a', 1.4, 0.5),
         fur, brow: '#4a3a30', eyeSize: 1.05, skin: face,
         belly: (cx, by) => ball(P, cx + 2, by + 1, 7 * p.sx, 8 * p.sy, '#a89c8a'),
         behind: (hx, hy, cx, by) => {
@@ -625,6 +681,13 @@ const CHARS = {
       // 白面鼯鼠：灰褐毛、白色臉頰、大眼睛、滑翔膜、扁平大尾巴
       const fur = '#8e7458', white = '#efe6d6', membrane = '#76604a';
       creature(P, p, {
+        // 毛的筆觸、飛膜邊緣的白色鑲邊、蓬鬆的尾巴
+        texture: (cx, by, rx, ry) => furLines(P, cx, by, rx, ry, '#5e4a36', 12),
+        headTexture: (hx, hy, rx, ry) => furLines(P, hx, hy, rx, ry, '#5e4a36', 7, Math.PI * 1.0, Math.PI * 1.7),
+        detail: (hx, hy, cx, by) => {
+          P.line(cx + 13, by + 2, cx + 8, by + 10, '#efe6d6', 0.7);
+          furLines(P, cx - 16, by - 4 + p.tail * 0.6, 5.6, 12, '#5e4a36', 8, Math.PI * 0.6, Math.PI * 1.4);
+        },
         fur, eyeSize: 1.35, brow: '#5a4430',
         belly: (cx, by) => ball(P, cx + 2, by + 1, 8 * p.sx, 8.5 * p.sy, white),
         behind: (hx, hy, cx, by) => {
@@ -667,6 +730,11 @@ const CHARS = {
           }
       };
       creature(P, p, {
+        // 腹側也是一排排鱗片、前腳的大爪
+        texture: (cx, by) => feathers(P, cx - 11, by + 2, 4, 2, 2.4, '#7a5432', 0.7),
+        detail: (hx, hy, cx, by) => {
+          for (const lx of [-5.5, 5.5]) claws(P, cx + lx + 4.4, 60, 3, '#3a2a1a', 1.4, 0.4);
+        },
         fur: scale, legColor: '#8a6440', footColor: '#6a4a2c', armColor: '#9a6e44', brow: '#4a3018',
         headR: 12.5, headRy: 11.5, headY: 29, eyeSize: 0.85, bodyRx: 13.5, bodyRy: 12.5,
         belly: (cx, by) => {
@@ -705,6 +773,18 @@ const CHARS = {
       const fur = '#6e4e36', cream = '#e8d8bc';
       const sh = { shadow: '#2a1a2a', light: '#c8a888' };
       creature(P, p, {
+        // 濕亮的短毛、鬍鬚墊、腳趾間的蹼
+        texture: (cx, by, rx, ry) => {
+          furLines(P, cx, by, rx, ry, '#4a3222', 9);
+          P.line(cx - 9, by - 8, cx - 3, by - 10.5, '#a88a70', 0.6);
+          P.line(cx - 10, by - 4, cx - 6, by - 5.5, '#a88a70', 0.5);
+        },
+        headTexture: (hx, hy) => {
+          for (const [dx, dy] of [[12, 4.5], [13.5, 5.5], [12.5, 6.5]]) P.dot(hx + dx, hy + dy, '#4a3222');
+        },
+        detail: (hx, hy, cx, by) => {
+          for (const lx of [-5.5, 5.5]) claws(P, cx + lx + 4.2, 60, 3, '#2a1a10', 1.2, 0.2);
+        },
         fur, shade: sh, brow: '#2a1a10', headR: 13.5, headRy: 12.5, headY: 28, bodyRx: 12, bodyRy: 12.5,
         legR: 2.8, footRx: 4.4, footColor: '#4a3424',
         belly: (cx, by) => ball(P, cx + 3, by - 2, 7 * p.sx, 9 * p.sy, '#c8a888'),
@@ -741,6 +821,18 @@ const CHARS = {
         P.curve(x - rx, y, x, y + ry * 1.2, x + rx, y, edge, 0.8);
       };
       creature(P, p, {
+        // 更多雲狀斑、尾巴環紋、臉頰黑線
+        texture: (cx, by, rx, ry) => {
+          furLines(P, cx, by, rx, ry, '#7a6440', 10);
+          blot(cx - 10, by + 1, 2.6, 1.8);
+          blot(cx - 3, by + 7.5, 2.4, 1.6);
+          blot(cx + 4, by - 4, 2, 1.4);
+        },
+        headTexture: (hx, hy) => {
+          blot(hx - 4, hy - 7, 2, 1.3);
+          P.line(hx + 1, hy + 4, hx - 5, hy + 6, '#2e2418', 0.8);
+          P.line(hx + 1, hy + 6.5, hx - 4, hy + 9, '#2e2418', 0.8);
+        },
         fur, iris: '#c8c850', slit: true, brow: '#3a2a18', headR: 14, headRy: 13,
         belly: (cx, by) => {
           ball(P, cx + 3, by + 2, 7 * p.sx, 8 * p.sy, white);
@@ -777,6 +869,9 @@ const CHARS = {
       // 帝雉：深藍紫羽毛、紅色臉部肉垂、白色翼斑、長尾羽上的白色橫斑
       const navy = '#2c3566', red = '#c83a30';
       creature(P, p, {
+        // 深藍紫的羽毛鱗紋、翅膀上的白色橫帶
+        texture: (cx, by) => feathers(P, cx - 10, by - 6, 5, 4, 2.2, '#161c44', 0.6),
+        headTexture: (hx, hy) => feathers(P, hx - 6, hy - 8, 3, 2, 1.8, '#161c44', 0.5),
         fur: navy, legColor: '#8a8a92', footColor: '#8a8a92', armColor: navy, wing: true,
         legR: 2, footRx: 3.6, brow: '#06060e', headR: 13, headRy: 12.5,
         shade: { shadow: '#140e2a', light: '#8a9ae0' },
@@ -811,6 +906,15 @@ const CHARS = {
       // 台灣藍鵲：黑頭、紅喙、黃色眼圈、藍色身體、白色尖端的長尾羽、紅腳
       const blue = '#3a72c0', black = '#2a2a30', red = '#cf3b30';
       creature(P, p, {
+        // 藍色羽毛的鱗紋、黑色的頸部、白色的翼斑
+        texture: (cx, by) => {
+          feathers(P, cx - 10, by - 4, 5, 3, 2.2, '#2a5aa0', 0.6);
+          P.curve(cx - 8, by - 10, cx, by - 13, cx + 9, by - 9, '#2a2a30', 1.6);
+        },
+        detail: (hx, hy, cx, by) => {
+          const ax = cx + p.arm[0] * 0.85, ay = 42 + p.bob * 0.7 + p.arm[1] * 0.8;
+          P.line(ax - 3, ay - 1, ax, ay - 1.5, '#f6f2ea', 0.8);
+        },
         fur: blue, headColor: black, legColor: red, footColor: red, armColor: blue, wing: true,
         legR: 2, footRx: 3.6, iris: '#e8c840', eyeSize: 0.9, brow: '#0a0a12', headR: 13.5, headRy: 12.5,
         belly: (cx, by) => ball(P, cx + 2, by + 2, 7 * p.sx, 7.5 * p.sy, '#7aa4dc'),
@@ -841,6 +945,12 @@ const CHARS = {
       // 五色鳥（台灣擬啄木）：綠色身體、藍色頭頂與臉、黃色喉嚨、紅色斑點、黑色眼線、粗粗的喙
       const green = '#5aa848', blue = '#4a8ad8', yellow = '#f0d040', red = '#d8382c';
       creature(P, p, {
+        // 綠色羽毛的鱗紋、黑色眉線、紅色喉斑
+        texture: (cx, by) => feathers(P, cx - 10, by - 5, 5, 3, 2.1, '#3a8a34', 0.6),
+        headTexture: (hx, hy) => {
+          P.line(hx - 2, hy - 4, hx + 10, hy - 4.5, '#1a1a20', 0.8);
+          ball(P, hx + 7, hy + 10, 1.8, 1.2, '#d8382c');
+        },
         fur: green, headColor: blue, armColor: '#4a9840', legColor: '#8a8a7a', footColor: '#8a8a7a', wing: true,
         legR: 2, footRx: 3.4, headR: 13.5, headRy: 13, eyeSize: 0.95, brow: '#0a0a12',
         belly: (cx, by) => ball(P, cx + 3, by + 2, 7 * p.sx, 7.5 * p.sy, '#8ac860'),
@@ -866,6 +976,15 @@ const CHARS = {
       // 熊鷹（赫氏角鷹）：深褐色羽毛、白色胸口上的褐色橫斑、短冠羽、彎鉤喙、黃色眼睛、黃色爪子
       const brown = '#8a6440', chest = '#efe6d2', bar = '#6a4a2c';
       creature(P, p, {
+        // 深褐羽毛的鱗紋、胸口的縱斑、毛茸茸的腳上有橫斑
+        texture: (cx, by) => {
+          feathers(P, cx - 11, by - 7, 5, 4, 2.4, '#5a3c22', 0.6);
+          for (const [dx, dy] of [[1, -6], [4, -4], [7, -6], [2, 2], [6, 1]]) P.line(cx + dx, by + dy, cx + dx, by + dy + 2, '#6a4a2c', 0.7);
+        },
+        detail: (hx, hy, cx, by) => {
+          for (const lx of [-5.5, 5.5]) for (const y of [53, 55.5]) P.line(cx + lx - 2, y, cx + lx + 2, y, '#a8865e', 0.6);
+          for (const lx of [-5.5, 5.5]) claws(P, cx + lx + 4.4, 60, 3, '#2a2420', 1.3, 0.5);
+        },
         fur: brown, armColor: '#7a5636', legColor: chest, footColor: '#e0b840', wing: true,
         legR: 3, iris: '#e8b830', brow: '#3a2414', headR: 14, headRy: 13,
         belly: (cx, by) => {
@@ -898,6 +1017,14 @@ const CHARS = {
       // 黑面琵鷺：白色羽毛、黑色的臉、長長的黑色琵琶嘴、黑腳、頭後淡黃色飾羽
       const white = '#f4f2ec', black = '#26262a';
       creature(P, p, {
+        // 白色羽毛的淡灰鱗紋、繁殖期胸前的黃色、蓬鬆的飾羽
+        texture: (cx, by) => {
+          feathers(P, cx - 10, by - 5, 5, 3, 2.1, '#c4c4d0', 0.5);
+          ball(P, cx + 6, by - 8, 3, 2, '#f0d890');
+        },
+        headTexture: (hx, hy) => {
+          for (const k of [0, 1, 2]) P.line(hx - 8, hy - 4 + k * 2, hx - 16 - k, hy - 2 + k * 2.4, '#e8cc78', 0.6);
+        },
         fur: white, legColor: black, footColor: black, armColor: '#ecebe4', wing: true, legR: 1.8, footRx: 3.4,
         headR: 12, headRy: 11.5, headY: 26, eyeSize: 0.9, brow: '#0a0a0a', iris: '#b83a34',
         shade: { shadow: '#7a7aa0' },
@@ -927,6 +1054,17 @@ const CHARS = {
       // 諸羅樹蛙：翠綠色的背、身體兩側一條白線、白白的肚子、頭頂兩顆金色大眼睛、指尖有圓圓的吸盤
       const green = '#5ab04e', white = '#f2f4e4', pad = '#8ad078';
       creature(P, p, {
+        // 背上細細的顆粒、鼓膜、腳趾的吸盤
+        texture: (cx, by) => {
+          for (const [dx, dy] of [[-9, -6], [-6, -9], [-3, -7], [-10, -1], [-7, -3], [0, -9], [-4, -4]]) P.dot(cx + dx, by + dy, '#3e8e36');
+        },
+        headTexture: (hx, hy) => {
+          P.ellipse(hx + 2, hy + 1, 1.6, 1.6, '#4a9a40');
+          for (const [dx, dy] of [[-6, -2], [-3, 3], [-8, 2]]) P.dot(hx + dx, hy + dy, '#3e8e36');
+        },
+        detail: (hx, hy, cx, by) => {
+          for (const lx of [-5.5, 5.5]) for (const k of [0, 1, 2]) P.ellipse(cx + lx + 3 + k * 1.6, 61.2, 0.8, 0.8, '#b8e8a0');
+        },
         fur: green, legColor: '#52a046', footColor: pad, armColor: '#52a046', iris: '#e0b030', eyeSize: 1.35, brow: '#1a3418',
         headR: 15, headRy: 11.5, headY: 30, headDx: 1, bodyRx: 12, bodyRy: 11, legR: 2.6, footRx: 5,
         shade: { shadow: '#1a4a4a', light: '#f0ffd0' },
@@ -962,6 +1100,13 @@ const CHARS = {
       const olive = '#6e8a5a', silver = '#e8ece4', pink = '#e89aa8', parr = '#3e4e3a';
       const fin = '#8a9a78';
       creature(P, p, {
+        // 背上更多黑點、鰭的條紋
+        texture: (cx, by) => {
+          for (const [dx, dy] of [[-9, -8], [-5, -9.5], [-1, -9], [3, -8.5], [-11, -5], [-7, -6], [1, -6]]) P.dot(cx + dx, by + dy, '#2a3424');
+        },
+        detail: (hx, hy, cx, by) => {
+          for (const k of [0, 1, 2]) P.line(cx - 12, by + 3 + k * 2, cx - 18, by + k * 3 - 2 + p.tail * 0.5, '#6a7a58', 0.5);
+        },
         fur: olive, headColor: olive, armColor: fin, legColor: fin, footColor: '#7a8a68', wing: true,
         legR: 2, footRx: 4.2, iris: '#d8c078', eyeSize: 1.15, brow: '#1a2418', headR: 13, headRy: 12.5, headY: 28,
         shade: { shadow: '#2a3a4a', light: '#f0f4e0' },
@@ -1001,6 +1146,15 @@ const CHARS = {
       // 綠蠵龜：背上的大殼（一塊塊盾片）、奶黃色腹甲、灰綠色帶鱗紋的頭、像槳一樣的鰭肢
       const skin = '#8a9a7a', shell = '#5a6a3a', plate = '#7a6a3a', rim = '#3a4428', cream = '#e8dca8';
       creature(P, p, {
+        // 鰭肢與脖子上的鱗片、腳上的小爪
+        texture: (cx, by) => {
+          for (const [dx, dy] of [[-3, -11], [0, -12], [3, -11]]) P.curve(cx + dx - 1.4, by + dy, cx + dx, by + dy - 1.2, cx + dx + 1.4, by + dy, '#5a6a4a', 0.5);
+        },
+        detail: (hx, hy, cx, by) => {
+          const ax = cx + p.arm[0] * 0.85, ay = 42 + p.bob * 0.7 + p.arm[1] * 0.8;
+          for (const k of [0, 1, 2]) P.dot(ax - 2 + k * 1.6, ay + 0.5, '#5a6a4a');
+          for (const lx of [-5.5, 5.5]) claws(P, cx + lx + 4.8, 60, 2, '#3a4428', 1, 0.3);
+        },
         fur: skin, armColor: '#7a8a6a', legColor: skin, footColor: '#6a7a5a', wing: true,
         legR: 3.4, footRx: 5, headR: 12.5, headRy: 11.5, headY: 28, headDx: 2, eyeSize: 1.1, brow: '#1a2418',
         bodyRx: 12, bodyRy: 12,
