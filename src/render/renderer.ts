@@ -192,6 +192,17 @@ export class Renderer {
    * fill = false：等比放大置中、可整數倍時優先用整數倍，其餘留黑邊。
    * fill = true（手機）：畫布填滿整個螢幕，場地等比置中，多出的部分延伸畫沙灘與天空。
    */
+  /** 固定像素大小（錄重播影片用）：場地剛好填滿，不依裝置像素比放大 */
+  resizeExact(pxW: number, pxH: number) {
+    this.scale = pxW / W;
+    this.viewW = W;
+    this.viewH = (pxH / pxW) * W;
+    this.offX = 0;
+    this.offY = (this.viewH - H) / 2;
+    this.canvas.width = pxW;
+    this.canvas.height = pxH;
+  }
+
   resize(availW: number, availH: number, fill = false) {
     const fit = Math.min(availW / W, availH / H);
     const dpr = window.devicePixelRatio || 1;

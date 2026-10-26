@@ -30,6 +30,7 @@ import {
 } from './ui/progress';
 import { paintHat } from './render/extras';
 import { TIP_AFTER_MATCHES, tipUrl } from './ui/tip';
+import { MatchRecorder, pickHighlight } from './replay/recorder';
 import { DEFAULT_PAD_MAP, DPAD_BUTTONS, applyPadMap, padButtonLabel, pressedButtons, readGamepad } from './input/gamepad';
 import { TouchControls, isTouchDevice } from './input/touch';
 import {
@@ -118,6 +119,8 @@ class App {
   /** 正在打的每日挑戰／環島站 */
   daily: Daily | null = null;
   tour: { idx: number; hard: boolean } | null = null;
+  /** 這一場的輸入紀錄（結算時做精彩重播影片） */
+  rec: MatchRecorder | null = null;
   /** 第一場比賽的場上提示 */
   coach: Coach | null = null;
   private coachEl: HTMLDivElement | null = null;
@@ -438,8 +441,10 @@ class App {
     }
     if (this.ais[0]) in1 = this.ais[0].decide(this.state);
     if (this.ais[1]) in2 = this.ais[1].decide(this.state);
+    if (this.mode !== 'demo') this.rec?.push(in1, in2);
     this.prev = this.state;
     this.state = step(this.state, in1, in2, this.cfg);
+    if (this.mode !== 'demo') this.rec?.note(this.state.events, this.prev);
     this.handleEvents(this.state.events, false);
     if (this.mode !== 'demo') this.countEvents(this.state.events, this.mode === 'local' ? 0 : this.humanSide);
     if (this.tutorial && this.tutorial.update(this.state, this.state.events)) this.onTutorialStep();
@@ -480,7 +485,6 @@ class App {
     const lite = this.settings.fx === 'lite';
     fx.amount = lite ? 0.5 : 1;
     fx.showWords = !lite && this.mode !== 'demo';
-    fx.lang = getLang();
     this.renderer.spawnEffects(events, mirror, this.chars);
     if (this.mode === 'demo' && this.screenName !== 'title') return;
     for (const e of events) audio.play(e.type, mirror ? 432 - e.x : e.x);
@@ -498,6 +502,7 @@ class App {
 
   private startDemo() {
     this.mode = 'demo';
+    this.rec = null;
     this.renderer.clearEffects();
     this.rollLook();
     this.cfg = defaultConfig({ targetScore: 99 });
@@ -545,6 +550,15 @@ class App {
     });
     this.resetMatchStats();
     this.state = this.prev = createState(seed, mode === 'practice' ? this.humanSide : 0);
+    this.rec = mode === 'practice' ? null : new MatchRecorder(this.state, this.cfg, {
+      chars: [this.chars[0], this.chars[1]],
+      scene: this.scene,
+      ball: this.ball,
+      hats: this.hats(),
+      night: this.daily?.rule === 'night',
+      humanSide: mode === 'local' ? 0 : this.humanSide,
+      fps: FPS_BY_SPEED[this.settings.speed],
+    });
     this.ais = [null, null];
     if (mode === 'cpu') this.ais[1 - this.humanSide] = new AiController(1 - this.humanSide, this.difficulty, seed);
     this.resultShown = false;
@@ -1551,6 +1565,7 @@ class App {
         this.daily ? null : share.preview,
         h('div', { class: 'result-actions' },
           h('div', { class: 'menu' }, tourBtn, againBtn),
+          this.replayButton(share.text),
           this.daily ? null : share.buttons,
           h('div', { class: 'menu row' },
             this.mode === 'cpu' && !this.daily && !this.tour ? button(t('changeLook'), () => {
@@ -1893,6 +1908,99 @@ class App {
       }, 'small support'))),
       h('p', { class: 'help' }, t('supportNote')),
     );
+  }
+
+  /** 結算畫面的「精彩重播」：這場有得分紀錄才顯示（線上對戰與練習不錄） */
+  private replayButton(shareText: string): HTMLElement | null {
+    const rec = this.rec;
+    if (!rec || this.mode === 'online' || !pickHighlight(rec)) return null;
+    return h('div', { class: 'menu' }, button(`🎬 ${t('replayBtn')}`, () => void this.openReplay(rec, shareText), 'replay'));
+  }
+
+  /**
+   * 精彩重播：重演最精彩的一球（慢動作），同時錄成影片；錄好後可以分享或下載。
+   * 不支援錄影的瀏覽器只播放重播。
+   */
+  private async openReplay(rec: MatchRecorder, shareText: string) {
+    const hl = pickHighlight(rec);
+    if (!hl) return;
+    track('replay_open', { spike: hl.spike });
+    const { playHighlight, videoMime } = await import('./replay/video');
+    const packs = [getCharacter(rec.meta.chars[0]), getCharacter(rec.meta.chars[1])] as [CharacterPack, CharacterPack];
+    const me = rec.meta.humanSide;
+    const caption = headline(getLang(), displayName(packs[me], getLang()), displayName(packs[1 - me], getLang()),
+      [this.state.score[me], this.state.score[1 - me]], this.mode !== 'local');
+    const stage = h('div', { class: 'replay-stage' });
+    const status = h('p', { class: 'help replay-status' }, videoMime() ? t('replayMaking') : t('replayUnsupported'));
+    const bar = h('div', { class: 'replay-bar' }, h('i'));
+    const actions = h('div', { class: 'menu row' });
+    let job: ReturnType<typeof playHighlight> | null = null;
+    let videoUrl = '';
+    const close = () => {
+      job?.cancel();
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      modal.remove();
+      this.modalClose = null;
+    };
+    const modal: HTMLDivElement = h('div', { class: 'modal' },
+      h('div', { class: 'screen replay-card' },
+        h('h2', {}, `🎬 ${t('replayTitle')}`),
+        stage, bar, status, actions,
+        h('div', { class: 'menu row' }, button(t('close'), close, 'secondary small')),
+      ),
+    );
+    this.modalClose?.();
+    this.modalClose = close;
+    $('#app').append(modal);
+
+    const run = () => {
+      actions.replaceChildren();
+      job = playHighlight(rec, hl, {
+        packs,
+        label: t('replayTitle'),
+        caption,
+        url: `${location.origin}${location.pathname}`,
+        onProgress: (p) => ((bar.firstChild as HTMLElement).style.width = `${Math.round(p * 100)}%`),
+      });
+      stage.replaceChildren(job.canvas);
+      void job.done.then((blob) => {
+        if (!modal.isConnected) return;
+        if (!blob) {
+          status.textContent = videoMime() ? t('replayFailed') : t('replayUnsupported');
+          actions.replaceChildren(button(t('replayAgain'), run, 'secondary small'));
+          return;
+        }
+        const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+        const file = new File([blob], `taiwan-gold-volley-replay.${ext}`, { type: blob.type });
+        videoUrl = URL.createObjectURL(blob);
+        const video = h('video', { src: videoUrl, controls: '', autoplay: '', loop: '', playsinline: '' }) as HTMLVideoElement;
+        video.muted = true;
+        stage.replaceChildren(video);
+        status.textContent = t('replayReady');
+        const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+        const canShareFile = !!nav.share && !!nav.canShare?.({ files: [file] });
+        const btns: HTMLElement[] = [];
+        if (canShareFile) btns.push(button(t('replayShare'), async () => {
+            track('share', { kind: 'replay' });
+            try {
+              await nav.share({ files: [file], text: shareText });
+            } catch {
+              // 取消
+            }
+          }, 'primary'));
+        actions.replaceChildren(...btns,
+          button(t('replayDownload'), () => {
+            track('share', { kind: 'replay_download' });
+            const a = document.createElement('a');
+            a.href = videoUrl;
+            a.download = file.name;
+            a.click();
+          }, canShareFile ? 'secondary' : 'primary'),
+          button(t('replayAgain'), run, 'secondary small'),
+        );
+      });
+    };
+    run();
   }
 
   /** 「請作者喝杯咖啡」按鈕；沒設定贊助網址時回傳 null（不顯示） */

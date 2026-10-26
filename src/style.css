@@ -1875,3 +1875,49 @@ button.tip-link {
 .tip-card {
   max-width: min(92vw, 440px);
 }
+
+/* ---------- 精彩重播 ---------- */
+button.replay {
+  background: #e8384a;
+  border-color: #b8202e;
+  color: #fff;
+}
+
+.replay-card {
+  width: min(94vw, 640px);
+}
+
+.replay-stage canvas,
+.replay-stage video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 864 / 608;
+  border-radius: 10px;
+  background: #000;
+}
+
+.replay-bar {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.replay-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #e8384a;
+}
+
+@media (max-height: 420px) {
+  .replay-card {
+    width: min(70vw, 460px);
+    padding: 8px 12px;
+  }
+  .replay-card h2 {
+    display: none;
+  }
+}
