@@ -480,11 +480,10 @@ class App {
 
   private handleEvents(events: GameEvent[], mirrorOverride: boolean) {
     const mirror = mirrorOverride;
-    // 特效強度：誇張（預設）或簡潔；選單背景的 AI 示範賽不顯示狀聲詞
+    // 特效強度：誇張（預設）或簡潔
     const fx = this.renderer.fx;
     const lite = this.settings.fx === 'lite';
     fx.amount = lite ? 0.5 : 1;
-    fx.showWords = !lite && this.mode !== 'demo';
     this.renderer.spawnEffects(events, mirror, this.chars);
     if (this.mode === 'demo' && this.screenName !== 'title') return;
     for (const e of events) audio.play(e.type, mirror ? 432 - e.x : e.x);

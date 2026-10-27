@@ -41,7 +41,6 @@ export function playHighlight(rec: MatchRecorder, hl: Highlight, o: ReplayVideoO
   const canvas = document.createElement('canvas');
   const renderer = new Renderer(canvas);
   renderer.resizeExact(VW, VH);
-  renderer.fx.showWords = true;
   const m = rec.meta;
   const view: View = {
     mirror: false,

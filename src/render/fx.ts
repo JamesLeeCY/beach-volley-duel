@@ -1,7 +1,7 @@
-// 角色特效：每隻動物在扣殺、接球、跳躍、魚躍、得分時有自己的誇張特效與狀聲詞。
+// 角色特效：每隻動物在扣殺、接球、跳躍、魚躍、得分時有自己的誇張特效（不顯示狀聲詞文字）。
 // 純視覺（不影響遊戲邏輯，線上對戰兩邊各自畫），粒子數有上限。
 import { GROUND_Y } from '../engine/constants';
-// 「簡潔」模式：粒子少一半、沒有閃光、畫面不震動、不顯示狀聲詞。
+// 「簡潔」模式：粒子少一半、沒有閃光、畫面不震動。
 
 export type FxShape = 'sq' | 'dot' | 'drop' | 'feather' | 'petal' | 'leaf' | 'scale' | 'cloud' | 'streak' | 'paw' | 'acorn' | 'bubble';
 
@@ -41,16 +41,6 @@ interface Slash {
   color: string;
 }
 
-interface Word {
-  x: number;
-  y: number;
-  text: string;
-  color: string;
-  life: number;
-  max: number;
-  tilt: number;
-}
-
 export interface FxHost {
   shake(n: number): void;
   flash(a: number, color?: string): void;
@@ -75,9 +65,6 @@ interface SprayOpts {
 
 /** 每隻動物的特效風格 */
 interface Style {
-  /** 狀聲詞（不分語言都用英文漫畫字） */
-  word: string;
-  wordColor: string;
   /** 主題色（得分的彩帶、衝擊波） */
   colors: string[];
   on: Partial<Record<Kind, (f: Fx, x: number, y: number, face: number) => void>>;
@@ -89,10 +76,8 @@ export class Fx {
   particles: Particle[] = [];
   rings: Ring[] = [];
   slashes: Slash[] = [];
-  words: Word[] = [];
   /** 0.5 = 簡潔模式 */
   amount = 1;
-  showWords = true;
 
   constructor(private host: FxHost) {}
 
@@ -127,12 +112,6 @@ export class Fx {
     this.slashes.push({ x, y, dir, life: 0, max: 24, color });
   }
 
-  word(x: number, y: number, text: string, color: string) {
-    if (!this.showWords) return;
-    this.words = this.words.filter((w) => w.life < w.max * 0.6).slice(-2);
-    this.words.push({ x, y, text, color, life: 0, max: 42, tilt: (Math.random() - 0.5) * 0.3 });
-  }
-
   shake(n: number) {
     if (this.amount >= 1) this.host.shake(n);
   }
@@ -154,7 +133,6 @@ export class Fx {
       this.flash(0.22);
       this.punch(1);
       this.shake(5);
-      this.word(x, y - 26, st.word, st.wordColor);
     } else if (kind === 'score') {
       this.spray(x, y - 20, 34, { colors: st.colors, shape: 'sq', speed: 4.5, up: 3, g: 0.12, size: 3, life: 55, drag: 0.97 });
     }
@@ -179,18 +157,12 @@ export class Fx {
     this.rings = this.rings.filter((r) => r.life < r.max);
     for (const s of this.slashes) s.life++;
     this.slashes = this.slashes.filter((s) => s.life < s.max);
-    for (const w of this.words) {
-      w.life++;
-      w.y -= 0.35;
-    }
-    this.words = this.words.filter((w) => w.life < w.max);
   }
 
   clear() {
     this.particles = [];
     this.rings = [];
     this.slashes = [];
-    this.words = [];
   }
 
   draw(g: CanvasRenderingContext2D) {
@@ -223,26 +195,6 @@ export class Fx {
     for (const p of this.particles) {
       g.globalAlpha = Math.max(0, 1 - p.life / p.max);
       drawParticle(g, p);
-    }
-    g.globalAlpha = 1;
-    for (const w of this.words) {
-      const t = w.life / w.max;
-      const pop = t < 0.15 ? 0.4 + (t / 0.15) * 0.9 : t < 0.25 ? 1.3 - ((t - 0.15) / 0.1) * 0.3 : 1;
-      g.save();
-      g.globalAlpha = t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1;
-      g.translate(w.x, w.y);
-      g.rotate(w.tilt);
-      g.scale(pop, pop);
-      g.font = '900 20px "Arial Rounded MT Bold", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      g.lineJoin = 'round';
-      g.lineWidth = 5;
-      g.strokeStyle = 'rgba(20,24,40,0.9)';
-      g.strokeText(w.text, 0, 0);
-      g.fillStyle = w.color;
-      g.fillText(w.text, 0, 0);
-      g.restore();
     }
     g.globalAlpha = 1;
   }
@@ -357,8 +309,6 @@ function drawParticle(g: CanvasRenderingContext2D, p: Particle) {
 const DUST = ['#e8c97a', '#d8b46a', '#f2dca0'];
 
 const DEFAULT_STYLE: Style = {
-  word: 'BAM!',
-  wordColor: '#ffe27a',
   colors: ['#ffc531', '#ffffff', '#2f7fe0'],
   on: {},
 };
@@ -371,7 +321,7 @@ function speedLines(f: Fx, x: number, y: number, dir: number, color: string, n =
 const STYLES: Record<string, Style> = {
   // 臺灣黑熊：巨大的熊掌爪痕、地面大震動、橡實
   yueyue: {
-    word: 'ROAR!', wordColor: '#f2ece0', colors: ['#2a2628', '#f2ece0', '#b89470'],
+    colors: ['#2a2628', '#f2ece0', '#b89470'],
     on: {
       spike: (f, x, y, face) => {
         f.slash(x, y, face > 0 ? 0.6 : Math.PI - 0.6, '#f2ece0');
@@ -383,7 +333,7 @@ const STYLES: Record<string, Style> = {
   },
   // 石虎：黃褐色速度線、魚躍留下貓掌印
   shishi: {
-    word: 'MEOW!', wordColor: '#ffd27a', colors: ['#c8a878', '#3a2e24', '#f2ece0'],
+    colors: ['#c8a878', '#3a2e24', '#f2ece0'],
     on: {
       spike: (f, x, y, face) => speedLines(f, x, y, face > 0 ? 0.5 : Math.PI - 0.5, '#ffd27a', 12),
       dive: (f, x, _y, face) => {
@@ -394,7 +344,7 @@ const STYLES: Record<string, Style> = {
   },
   // 梅花鹿：梅花瓣（梅梅）、跳起來白色斑點閃一下
   meimei: {
-    word: 'YIP!', wordColor: '#ffe0ea', colors: ['#ffffff', '#f8c8d8', '#c8844a'],
+    colors: ['#ffffff', '#f8c8d8', '#c8844a'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 18, { colors: ['#ffffff', '#ffd0e0', '#ffb0c8'], shape: 'petal', speed: 3.5, g: 0.04, size: 4, life: 55, drag: 0.96 }),
       jump: (f, x, y) => f.spray(x, y + 18, 10, { colors: ['#f4ecd8'], shape: 'dot', speed: 2, up: 1, g: 0.05, size: 2.4, life: 25 }),
@@ -403,7 +353,7 @@ const STYLES: Record<string, Style> = {
   },
   // 臺灣獼猴：樹葉亂飛、得分時在地上彈跳
   hoho: {
-    word: 'OOK!', wordColor: '#ffd0c0', colors: ['#6aa84a', '#8a8070', '#e2b0a0'],
+    colors: ['#6aa84a', '#8a8070', '#e2b0a0'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 16, { colors: ['#5a9a3a', '#7ab84a', '#4a8a2a'], shape: 'leaf', speed: 4, g: 0.06, size: 3.2, life: 45, drag: 0.96 }),
       bump: (f, x, y) => f.spray(x, y, 6, { colors: ['#7ab84a'], shape: 'leaf', speed: 2.5, g: 0.06, size: 2.8, life: 35 }),
@@ -412,7 +362,7 @@ const STYLES: Record<string, Style> = {
   },
   // 白面鼯鼠：滑翔的風、飄落的葉子
   glidey: {
-    word: 'WHOOSH!', wordColor: '#e8f4ff', colors: ['#efe6d6', '#8e7458', '#c8e0f0'],
+    colors: ['#efe6d6', '#8e7458', '#c8e0f0'],
     on: {
       jump: (f, x, y) => {
         f.spray(x - 14, y, 6, { colors: ['rgba(230,245,255,0.9)'], shape: 'streak', speed: 4, dir: Math.PI * 0.5, spread: 1.4, g: 0, size: 2, life: 16 });
@@ -426,7 +376,7 @@ const STYLES: Record<string, Style> = {
   },
   // 臺灣穿山甲：鱗片碎片、捲成球滾地
   jiajia: {
-    word: 'ROLL!', wordColor: '#ffd8a0', colors: ['#a8784a', '#7a5432', '#e8c8a8'],
+    colors: ['#a8784a', '#7a5432', '#e8c8a8'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 14, { colors: ['#a8784a', '#c89a6a', '#7a5432'], shape: 'scale', speed: 4, g: 0.15, size: 3, life: 35 }),
       dive: (f, x, _y, face) => {
@@ -438,7 +388,7 @@ const STYLES: Record<string, Style> = {
   },
   // 歐亞水獺：水花四濺
   tata: {
-    word: 'SPLASH!', wordColor: '#c8eaff', colors: ['#8ad0f0', '#ffffff', '#6e4e36'],
+    colors: ['#8ad0f0', '#ffffff', '#6e4e36'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 20, { colors: ['#8ad0f0', '#c8eaff', '#ffffff'], shape: 'drop', speed: 4.5, up: 2, g: 0.2, size: 2.6, life: 30 }),
       dive: (f, x) => {
@@ -450,7 +400,7 @@ const STYLES: Record<string, Style> = {
   },
   // 臺灣雲豹：雲狀的霧、殘影
   baobao: {
-    word: 'GRRR!', wordColor: '#e8e0c8', colors: ['#b8a070', '#6a5a3e', '#e8e0c8'],
+    colors: ['#b8a070', '#6a5a3e', '#e8e0c8'],
     on: {
       spike: (f, x, y, face) => {
         f.spray(x, y, 10, { colors: ['rgba(106,90,62,0.7)', 'rgba(200,190,160,0.7)'], shape: 'cloud', speed: 2, g: -0.02, size: 3.5, life: 40, drag: 0.95 });
@@ -462,7 +412,7 @@ const STYLES: Record<string, Style> = {
   },
   // 帝雉：深藍與白色的羽毛
   mikado: {
-    word: 'CLUCK!', wordColor: '#c8d0ff', colors: ['#2c3566', '#f2f0ea', '#c83a30'],
+    colors: ['#2c3566', '#f2f0ea', '#c83a30'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 16, { colors: ['#2c3566', '#3a4888', '#f2f0ea'], shape: 'feather', speed: 3.5, g: 0.03, size: 3, life: 55, drag: 0.95 }),
       bump: (f, x, y) => f.spray(x, y, 5, { colors: ['#2c3566', '#f2f0ea'], shape: 'feather', speed: 2, g: 0.03, size: 2.6, life: 40 }),
@@ -470,7 +420,7 @@ const STYLES: Record<string, Style> = {
   },
   // 臺灣藍鵲：藍色長尾的拖影＋藍羽毛
   lanlan: {
-    word: 'CAW!', wordColor: '#a8d0ff', colors: ['#3a72c0', '#f6f2ea', '#cf3b30'],
+    colors: ['#3a72c0', '#f6f2ea', '#cf3b30'],
     on: {
       spike: (f, x, y, face) => {
         speedLines(f, x, y, face > 0 ? 0.4 : Math.PI - 0.4, '#7aa4e8', 10);
@@ -481,7 +431,7 @@ const STYLES: Record<string, Style> = {
   },
   // 五色鳥：五種顏色的彩帶
   caicai: {
-    word: 'KOK-KOK!', wordColor: '#fff07a', colors: ['#5aa848', '#4a8ad8', '#d8382c', '#f0d040', '#1a1a20'],
+    colors: ['#5aa848', '#4a8ad8', '#d8382c', '#f0d040', '#1a1a20'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 26, { colors: ['#5aa848', '#4a8ad8', '#d8382c', '#f0d040', '#1a1a20'], shape: 'sq', speed: 5, up: 1, g: 0.1, size: 3, life: 45, drag: 0.96 }),
       bump: (f, x, y) => f.spray(x, y, 10, { colors: ['#5aa848', '#4a8ad8', '#d8382c', '#f0d040'], shape: 'sq', speed: 3, g: 0.1, size: 2.4, life: 30 }),
@@ -489,7 +439,7 @@ const STYLES: Record<string, Style> = {
   },
   // 熊鷹：俯衝的風壓、深色羽毛、最大的閃光
   ying: {
-    word: 'SCREE!', wordColor: '#ffe6a0', colors: ['#8a6440', '#efe6d2', '#e0b840'],
+    colors: ['#8a6440', '#efe6d2', '#e0b840'],
     on: {
       spike: (f, x, y, face) => {
         f.flash(0.35, '#fff6d8');
@@ -502,7 +452,7 @@ const STYLES: Record<string, Style> = {
   },
   // 黑面琵鷺：水花與白羽毛
   pipi: {
-    word: 'SWISH!', wordColor: '#ffffff', colors: ['#f4f2ec', '#26262a', '#f0d890'],
+    colors: ['#f4f2ec', '#26262a', '#f0d890'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 14, { colors: ['#ffffff', '#f4f2ec', '#e8e8f0'], shape: 'feather', speed: 3, g: 0.03, size: 3, life: 50, drag: 0.95 }),
       bump: (f, x, y) => f.spray(x, y, 10, { colors: ['#c8eaff', '#ffffff'], shape: 'drop', speed: 3, up: 1, g: 0.2, size: 2.2, life: 22 }),
@@ -510,7 +460,7 @@ const STYLES: Record<string, Style> = {
   },
   // 諸羅樹蛙：大跳水波紋、綠色水滴
   wawa: {
-    word: 'RIBBIT!', wordColor: '#c8ff9a', colors: ['#5ab04e', '#c8ff9a', '#ffffff'],
+    colors: ['#5ab04e', '#c8ff9a', '#ffffff'],
     on: {
       jump: (f, x, y) => {
         f.ring(x, y + 30, '#8ad078', 3, 16, 2.5);
@@ -522,7 +472,7 @@ const STYLES: Record<string, Style> = {
   },
   // 櫻花鉤吻鮭：櫻花瓣、跳出水面的泡泡
   sakura: {
-    word: 'SPLOOSH!', wordColor: '#ffd0dc', colors: ['#e89aa8', '#ffffff', '#6e8a5a'],
+    colors: ['#e89aa8', '#ffffff', '#6e8a5a'],
     on: {
       spike: (f, x, y) => f.spray(x, y, 18, { colors: ['#ffc0d0', '#ffe0ea', '#ffffff'], shape: 'petal', speed: 3.5, g: 0.03, size: 3.6, life: 55, drag: 0.96 }),
       jump: (f, x, y) => {
@@ -534,7 +484,7 @@ const STYLES: Record<string, Style> = {
   },
   // 綠蠵龜：沉重的沙塵與震動、泡泡
   guigui: {
-    word: 'THUD!', wordColor: '#e8f0c8', colors: ['#6a9a6a', '#e8dca8', '#5a6a3a'],
+    colors: ['#6a9a6a', '#e8dca8', '#5a6a3a'],
     on: {
       spike: (f, x, y) => {
         f.shake(11);
